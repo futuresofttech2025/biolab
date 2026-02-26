@@ -1,0 +1,178 @@
+# ════════════════════════════════════════════════════════════════════════
+# BioLab API Gateway — Spring Cloud Gateway (Reactive / WebFlux)
+# Port: 8080 | Central entry point for all client requests
+# ════════════════════════════════════════════════════════════════════════
+
+server:
+  port: 8080
+  shutdown: graceful
+  netty:
+    connection-timeout: 10000
+
+spring:
+  application:
+    name: biolab-api-gateway
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+
+  # ─── Config Client — fetch from Config Server (optional) ────────────
+  config:
+    import: optional:configserver:http://${CONFIG_HOST:localhost}:${CONFIG_PORT:8888}
+
+  # ─── Redis — rate limiting backend ──────────────────────────────────
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      timeout: 3000
+      lettuce:
+        pool:
+          max-active: 20
+          max-idle: 10
+
+  # ─── Gateway Configuration (Spring Cloud 2025.0.x property names) ──
+  cloud:
+    gateway:
+      server:
+        webflux:
+          # Trust proxies for X-Forwarded-* header handling
+          trusted-proxies: ".*"
+
+          # Service discovery-based routing
+          discovery:
+            locator:
+              enabled: true
+              lower-case-service-id: true
+
+          # Global timeouts
+          httpclient:
+            connect-timeout: 5000
+            response-timeout: 10s
+
+          # Default filters applied to ALL routes
+          default-filters:
+            - name: RequestSize
+              args:
+                maxSize: 100MB
+
+# ─── JWT Configuration ────────────────────────────────────────────────
+app:
+  jwt:
+    secret: ${JWT_SECRET:BioLabSecretKeyForJWTSigningMustBeAtLeast256BitsLong2026!}
+    issuer: biolab-auth-service
+
+  # ─── CORS ───────────────────────────────────────────────────────────
+  cors:
+    allowed-origins: ${CORS_ORIGINS:http://localhost:3000,http://localhost:5173}
+    allowed-methods: GET,POST,PUT,PATCH,DELETE,OPTIONS
+    allowed-headers: "*"
+    allow-credentials: true
+    max-age: 3600
+
+  # ─── Rate Limiting ─────────────────────────────────────────────────
+  rate-limit:
+    default-replenish-rate: 20
+    default-burst-capacity: 40
+
+# ─── Eureka Client ────────────────────────────────────────────────────
+eureka:
+  instance:
+    prefer-ip-address: true
+    metadata-map:
+      zone: primary
+      version: 1.0.0
+  client:
+    service-url:
+      defaultZone: http://${APP_EUREKA_USERNAME:admin}:${APP_EUREKA_PASSWORD:admin}@${EUREKA_HOST:localhost}:${EUREKA_PORT:8761}/eureka/
+    register-with-eureka: true
+    fetch-registry: true
+
+# ─── Resilience4j Circuit Breaker ─────────────────────────────────────
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        sliding-window-size: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 10s
+        permitted-number-of-calls-in-half-open-state: 5
+    instances:
+      authServiceCB:
+        base-config: default
+      userServiceCB:
+        base-config: default
+      catalogServiceCB:
+        base-config: default
+      projectServiceCB:
+        base-config: default
+      documentServiceCB:
+        base-config: default
+      invoiceServiceCB:
+        base-config: default
+      messagingServiceCB:
+        base-config: default
+      notificationServiceCB:
+        base-config: default
+      auditServiceCB:
+        base-config: default
+  timelimiter:
+    configs:
+      default:
+        timeout-duration: 4s
+
+# ─── Actuator ─────────────────────────────────────────────────────────
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus,gateway
+  endpoint:
+    health:
+      show-details: when-authorized
+      probes:
+        enabled: true
+    gateway:
+      access: unrestricted
+
+# ─── Swagger / OpenAPI ────────────────────────────────────────────────
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    enabled: true
+
+# ─── Logging ──────────────────────────────────────────────────────────
+logging:
+  level:
+    root: INFO
+    com.biolab.gateway: DEBUG
+    org.springframework.cloud.gateway: INFO
+    io.github.resilience4j: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level [%logger{36}] - %msg%n"
+
+---
+# Profile: prod
+spring:
+  config:
+    activate:
+      on-profile: prod
+  cloud:
+    gateway:
+      server:
+        webflux:
+          # In production, restrict to your actual proxy/load balancer IPs
+          trusted-proxies: "${TRUSTED_PROXY_PATTERN:10\\.0\\.0\\..*}"
+
+logging:
+  level:
+    root: WARN
+    com.biolab.gateway: INFO
+    org.springframework.cloud.gateway: WARN
+
+# ─── ELK Stack Logging ────────────────────────────────────────────────
+app:
+  elk:
+    logstash-host: ${LOGSTASH_HOST:logstash}
+    logstash-port: ${LOGSTASH_PORT:5000}

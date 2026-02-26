@@ -1,0 +1,22 @@
+# biolab-document-service — Config Server Overrides
+server:
+  port: 8089
+spring:
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/biolab
+    username: ${DB_USER:biolab}
+    password: ${DB_PASS:biolab}
+app:
+  jwt:
+    secret: ${JWT_SECRET:BioLabSecretKeyForJWTSigningMustBeAtLeast256BitsLong2026!}
+    issuer: biolab-auth-service
+  encryption:
+    key: ${ENCRYPTION_KEY:DefaultEncryptionKey32BytesLong!!}
+    algorithm: AES/GCM/NoPadding
+    key-rotation-days: 90
+
+# ─── ELK Stack ──────────────────────────────────────────────────
+app:
+  elk:
+    logstash-host: ${LOGSTASH_HOST:logstash}
+    logstash-port: ${LOGSTASH_PORT:5000}

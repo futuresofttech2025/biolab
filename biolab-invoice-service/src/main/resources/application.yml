@@ -1,0 +1,64 @@
+server:
+  port: 8084
+  shutdown: graceful
+
+spring:
+  application:
+    name: biolab-invoice-service
+  config:
+    import: optional:configserver:http://${CONFIG_HOST:localhost}:${CONFIG_PORT:8888}
+  cloud:
+    config:
+      uri: ${CONFIG_URI:http://localhost:8888}
+      fail-fast: false
+
+  # ─── PostgreSQL (reads from both sec_schema and app_schema) ─────────
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:192.168.1.6}:${DB_PORT:5432}/${DB_NAME:postgres}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:postgres}
+    hikari:
+      maximum-pool-size: 15
+      minimum-idle: 5
+      connection-timeout: 30000
+      idle-timeout: 600000
+
+
+eureka:
+  instance:
+    prefer-ip-address: true
+  client:
+    service-url:
+      defaultZone: http://${APP_EUREKA_USERNAME:admin}:${APP_EUREKA_PASSWORD:admin}@${EUREKA_HOST:localhost}:${EUREKA_PORT:8761}/eureka/
+
+
+# ─── Actuator Endpoints ───────────────────────────────────────────────
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: when-authorized
+      probes:
+        enabled: true
+  info:
+    env:
+      enabled: true
+
+# ─── Swagger / OpenAPI ────────────────────────────────────────────────
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    enabled: true
+    tags-sorter: alpha
+    operations-sorter: method
+
+# ─── ELK Stack Logging ────────────────────────────────────────────────
+app:
+  elk:
+    logstash-host: ${LOGSTASH_HOST:logstash}
+    logstash-port: ${LOGSTASH_PORT:5000}

@@ -1,0 +1,19 @@
+# ═══════════════════════════════════════════════════════════════
+# BioLabs — Logstash Configuration
+# ═══════════════════════════════════════════════════════════════
+http.host: "0.0.0.0"
+http.port: 9600
+
+# Pipeline settings
+pipeline.workers: 2
+pipeline.batch.size: 125
+pipeline.batch.delay: 50
+
+# Logging
+log.level: info
+
+# Monitoring (sends Logstash metrics to Elasticsearch)
+monitoring.enabled: false
+
+# X-Pack
+xpack.monitoring.enabled: false

@@ -1,0 +1,97 @@
+# ════════════════════════════════════════════════════════════════════════
+# BioLab Discovery Server — Netflix Eureka
+# Port: 8761 | Dashboard: http://localhost:8761
+# ════════════════════════════════════════════════════════════════════════
+
+server:
+  port: 8761
+  shutdown: graceful
+
+spring:
+  application:
+    name: biolab-discovery-server
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+
+# ─── Custom App Properties ────────────────────────────────────────────
+# Override in production via environment variables:
+#   APP_EUREKA_USERNAME / APP_EUREKA_PASSWORD
+app:
+  eureka:
+    username: ${APP_EUREKA_USERNAME:admin}
+    password: ${APP_EUREKA_PASSWORD:admin}
+
+# ─── Eureka Server Configuration ─────────────────────────────────────
+eureka:
+  instance:
+    hostname: localhost
+    prefer-ip-address: true
+    # Metadata visible in the Eureka dashboard
+    metadata-map:
+      zone: primary
+      version: 1.0.0
+
+  client:
+    # Standalone mode — does not register with itself
+    register-with-eureka: false
+    fetch-registry: false
+    service-url:
+      defaultZone: http://${app.eureka.username}:${app.eureka.password}@localhost:${server.port}/eureka/
+
+  server:
+    # Evict unhealthy instances every 5 seconds (default 60s)
+    eviction-interval-timer-in-ms: 5000
+    # Disable self-preservation in dev to allow quick eviction
+    enable-self-preservation: false
+    # Refresh response cache every 5 seconds (default 30s)
+    response-cache-update-interval-ms: 5000
+
+# ─── Actuator / Management ────────────────────────────────────────────
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus,env
+  endpoint:
+    health:
+      show-details: when-authorized
+      probes:
+        enabled: true
+  info:
+    env:
+      enabled: true
+
+# ─── Swagger / OpenAPI ────────────────────────────────────────────────
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    enabled: true
+
+# ─── Logging ──────────────────────────────────────────────────────────
+logging:
+  level:
+    root: INFO
+    com.biolab.discovery: DEBUG
+    com.netflix.eureka: WARN
+    com.netflix.discovery: WARN
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level [%logger{36}] - %msg%n"
+
+---
+# Profile: prod
+spring:
+  config:
+    activate:
+      on-profile: prod
+
+eureka:
+  server:
+    enable-self-preservation: true
+    renewal-percent-threshold: 0.85
+
+logging:
+  level:
+    root: WARN
+    com.biolab.discovery: INFO

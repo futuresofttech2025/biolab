@@ -1,0 +1,97 @@
+# ════════════════════════════════════════════════════════════════════════
+# BioLab Config Server — Spring Cloud Config
+# Port: 8888 | Backend: native (filesystem) — switch to Git for production
+# ════════════════════════════════════════════════════════════════════════
+
+server:
+  port: 8888
+  shutdown: graceful
+
+spring:
+  application:
+    name: biolab-config-server
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+
+  # ─── Config Server Backend ──────────────────────────────────────────
+  # Native (filesystem) backend for local development.
+  # Switch to Git backend for production — see "prod" profile below.
+  cloud:
+    config:
+      server:
+        native:
+          search-locations: file:${CONFIG_REPO_PATH:./config-repo}
+
+  # ─── Active Profiles ────────────────────────────────────────────────
+  profiles:
+    active: native
+
+# ─── Custom App Properties ────────────────────────────────────────────
+app:
+  config:
+    username: ${APP_CONFIG_USERNAME:configuser}
+    password: ${APP_CONFIG_PASSWORD:configpass}
+
+# ─── Eureka Client — register with Discovery Server ──────────────────
+eureka:
+  instance:
+    prefer-ip-address: true
+    metadata-map:
+      zone: primary
+      version: 1.0.0
+  client:
+    service-url:
+      defaultZone: http://${APP_EUREKA_USERNAME:admin}:${APP_EUREKA_PASSWORD:admin}@${EUREKA_HOST:localhost}:${EUREKA_PORT:8761}/eureka/
+    register-with-eureka: true
+    fetch-registry: true
+
+# ─── Actuator ─────────────────────────────────────────────────────────
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus,env,refresh
+  endpoint:
+    health:
+      show-details: when-authorized
+      probes:
+        enabled: true
+
+# ─── Swagger / OpenAPI ────────────────────────────────────────────────
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    enabled: true
+
+# ─── Logging ──────────────────────────────────────────────────────────
+logging:
+  level:
+    root: INFO
+    com.biolab.config: DEBUG
+    org.springframework.cloud.config: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level [%logger{36}] - %msg%n"
+
+---
+# Profile: prod — Git-backed configuration
+spring:
+  config:
+    activate:
+      on-profile: prod
+  cloud:
+    config:
+      server:
+        git:
+          uri: ${CONFIG_GIT_URI:https://github.com/biolab/config-repo}
+          default-label: main
+          clone-on-start: true
+          force-pull: true
+          search-paths: "{application}"
+          timeout: 10
+
+logging:
+  level:
+    root: WARN
+    com.biolab.config: INFO

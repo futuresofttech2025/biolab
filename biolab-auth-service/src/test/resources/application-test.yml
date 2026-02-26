@@ -1,0 +1,25 @@
+server:
+  port: 0
+spring:
+  datasource:
+    url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1
+    driver-class-name: org.h2.Driver
+  jpa:
+    hibernate.ddl-auto: create-drop
+    properties.hibernate.default_schema: public
+  flyway:
+    enabled: false
+  data.redis.host: localhost
+eureka:
+  client.enabled: false
+app:
+  jwt:
+    secret: BioLabTestSecretKeyForJWTSigningMustBeAtLeast256BitsLongForTesting!
+    access-token-expiration-ms: 60000
+    refresh-token-expiration-ms: 300000
+    issuer: biolab-auth-service
+  security:
+    bcrypt-strength: 4
+    max-login-attempts: 3
+    lockout-duration-minutes: 5
+    password-history-count: 3

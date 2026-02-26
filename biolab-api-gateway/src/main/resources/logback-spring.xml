@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ═══════════════════════════════════════════════════════════════
+  BioLabs — biolab-api-gateway Logback Configuration
+  ═══════════════════════════════════════════════════════════════
+  Profiles:
+    • default  → Human-readable console output (local dev)
+    • docker   → JSON structured logging → Logstash TCP
+    • elk      → JSON structured logging → Logstash TCP
+  ═══════════════════════════════════════════════════════════════
+-->
+<configuration scan="true" scanPeriod="30 seconds">
+
+    <!-- ─── Properties ─────────────────────────────────────────── -->
+    <springProperty scope="context" name="APP_NAME"
+                    source="spring.application.name" defaultValue="biolab-api-gateway"/>
+    <springProperty scope="context" name="LOGSTASH_HOST"
+                    source="app.elk.logstash-host" defaultValue="logstash"/>
+    <springProperty scope="context" name="LOGSTASH_PORT"
+                    source="app.elk.logstash-port" defaultValue="5000"/>
+
+    <!-- ─── Console Appender (human-readable) ─────────────────── -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %highlight(%-5level) [%blue(%thread)] %cyan(%logger{36}) — %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- ─── JSON Console Appender (structured for Docker logs) ── -->
+    <appender name="JSON_CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+            <includeMdcKeyName>traceId</includeMdcKeyName>
+            <includeMdcKeyName>spanId</includeMdcKeyName>
+            <includeMdcKeyName>userId</includeMdcKeyName>
+            <includeMdcKeyName>orgId</includeMdcKeyName>
+            <includeMdcKeyName>requestId</includeMdcKeyName>
+            <customFields>{"service":"biolab-api-gateway","environment":"${SPRING_PROFILES_ACTIVE:-default}"}</customFields>
+            <timeZone>UTC</timeZone>
+        </encoder>
+    </appender>
+
+    <!-- ─── Logstash TCP Appender (ships to ELK) ──────────────── -->
+    <appender name="LOGSTASH" class="net.logstash.logback.appender.LogstashTcpSocketAppender">
+        <destination>${LOGSTASH_HOST}:${LOGSTASH_PORT}</destination>
+        <reconnectionDelay>5 seconds</reconnectionDelay>
+        <writeBufferSize>16384</writeBufferSize>
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+            <includeMdcKeyName>traceId</includeMdcKeyName>
+            <includeMdcKeyName>spanId</includeMdcKeyName>
+            <includeMdcKeyName>userId</includeMdcKeyName>
+            <includeMdcKeyName>orgId</includeMdcKeyName>
+            <includeMdcKeyName>requestId</includeMdcKeyName>
+            <customFields>{"service":"biolab-api-gateway"}</customFields>
+            <timeZone>UTC</timeZone>
+        </encoder>
+        <!-- Async wrapper to prevent blocking on Logstash downtime -->
+        <ringBufferSize>8192</ringBufferSize>
+    </appender>
+
+    <!-- ─── Rolling File Appender (persistent JSON logs) ──────── -->
+    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>logs/${APP_NAME}.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>logs/${APP_NAME}.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
+            <maxFileSize>50MB</maxFileSize>
+            <maxHistory>30</maxHistory>
+            <totalSizeCap>1GB</totalSizeCap>
+        </rollingPolicy>
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+            <customFields>{"service":"biolab-api-gateway"}</customFields>
+            <timeZone>UTC</timeZone>
+        </encoder>
+    </appender>
+
+    <!-- ─── Profile: default (local development) ──────────────── -->
+    <springProfile name="default">
+        <logger name="com.biolab.gateway" level="DEBUG" />
+        <logger name="org.springframework.security" level="DEBUG" />
+        <logger name="org.hibernate.SQL" level="DEBUG" />
+        <root level="INFO">
+            <appender-ref ref="CONSOLE" />
+        </root>
+    </springProfile>
+
+    <!-- ─── Profile: docker / elk (JSON + Logstash) ───────────── -->
+    <springProfile name="docker,elk">
+        <logger name="com.biolab.gateway" level="DEBUG" />
+        <logger name="org.springframework.security" level="WARN" />
+        <logger name="org.hibernate.SQL" level="WARN" />
+        <logger name="org.apache.http" level="WARN" />
+        <root level="INFO">
+            <appender-ref ref="JSON_CONSOLE" />
+            <appender-ref ref="LOGSTASH" />
+            <appender-ref ref="FILE" />
+        </root>
+    </springProfile>
+
+</configuration>

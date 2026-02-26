@@ -1,0 +1,19 @@
+# ═══════════════════════════════════════════════════════════════
+# BioLabs — Kibana Configuration
+# ═══════════════════════════════════════════════════════════════
+server.name: "biolab-kibana"
+server.host: "0.0.0.0"
+server.port: 5601
+
+# Elasticsearch connection
+elasticsearch.hosts: ["http://elasticsearch:9200"]
+
+# Disable telemetry
+telemetry.enabled: false
+telemetry.optIn: false
+
+# Monitoring
+monitoring.ui.enabled: false
+
+# Default index pattern
+xpack.fleet.isAirGapped: true

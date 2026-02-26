@@ -1,0 +1,21 @@
+# Test profile — Config Server with native backend
+server:
+  port: 0
+
+spring:
+  cloud:
+    config:
+      server:
+        native:
+          search-locations: classpath:/test-config-repo
+  profiles:
+    active: native
+
+eureka:
+  client:
+    enabled: false
+
+app:
+  config:
+    username: test
+    password: test

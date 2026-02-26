@@ -1,0 +1,21 @@
+# Test profile — standalone Eureka with relaxed security
+server:
+  port: 0
+
+spring:
+  security:
+    user:
+      name: test
+      password: test
+
+eureka:
+  client:
+    register-with-eureka: false
+    fetch-registry: false
+  server:
+    enable-self-preservation: false
+
+app:
+  eureka:
+    username: test
+    password: test

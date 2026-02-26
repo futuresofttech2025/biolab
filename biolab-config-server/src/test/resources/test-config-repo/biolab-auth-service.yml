@@ -1,0 +1,6 @@
+# Test configuration for auth service
+server:
+  port: 0
+spring:
+  application:
+    name: biolab-auth-service

@@ -1,0 +1,6 @@
+# ═══════════════════════════════════════════════════════════════
+# BioLabs — Logstash Pipelines
+# ═══════════════════════════════════════════════════════════════
+- pipeline.id: biolab-microservices
+  path.config: "/usr/share/logstash/pipeline/biolab.conf"
+  pipeline.workers: 2

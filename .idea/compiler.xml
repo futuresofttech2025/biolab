@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="CompilerConfiguration">
+    <annotationProcessing>
+      <profile default="true" name="Default" enabled="true" />
+      <profile name="Maven default annotation processors profile" enabled="true">
+        <sourceOutputDir name="target/generated-sources/annotations" />
+        <sourceTestOutputDir name="target/generated-test-sources/test-annotations" />
+        <outputRelativeToContentRoot value="true" />
+        <module name="biolab-api-gateway" />
+        <module name="biolab-config-server" />
+        <module name="biolab-catalog-service" />
+        <module name="biolab-auth-service" />
+        <module name="biolab-discovery-server" />
+        <module name="biolab-common" />
+        <module name="biolab-user-service" />
+        <module name="biolab-project-service" />
+        <module name="biolab-document-service" />
+        <module name="biolab-messaging-service" />
+        <module name="biolab-notification-service" />
+        <module name="biolab-audit-service" />
+        <module name="biolab-invoice-service" />
+      </profile>
+    </annotationProcessing>
+  </component>
+  <component name="JavacSettings">
+    <option name="ADDITIONAL_OPTIONS_OVERRIDE">
+      <module name="biolab-api-gateway" options="-parameters" />
+      <module name="biolab-audit-service" options="-parameters" />
+      <module name="biolab-auth-service" options="-parameters" />
+      <module name="biolab-catalog-service" options="-parameters" />
+      <module name="biolab-common" options="-parameters" />
+      <module name="biolab-config-server" options="-parameters" />
+      <module name="biolab-discovery-server" options="-parameters" />
+      <module name="biolab-document-service" options="-parameters" />
+      <module name="biolab-invoice-service" options="-parameters" />
+      <module name="biolab-messaging-service" options="-parameters" />
+      <module name="biolab-notification-service" options="-parameters" />
+      <module name="biolab-project-service" options="-parameters" />
+      <module name="biolab-user-service" options="-parameters" />
+    </option>
+  </component>
+</project>

@@ -1,0 +1,296 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ════════════════════════════════════════════════════════════════════════
+  BioLabs Services Hub — Parent POM (Multi-Module)
+  B2B Biotech Experimentation Platform
+  ════════════════════════════════════════════════════════════════════════
+  Modules:
+    • biolab-discovery-server  — Netflix Eureka Service Registry
+    • biolab-config-server     — Spring Cloud Config (Git-backed)
+    • biolab-api-gateway       — Spring Cloud Gateway + JWT Filter
+
+  Tech Stack: Java 17 | Spring Boot 3.5.8 | Spring Cloud 2024.0.3
+  Compliance: HIPAA · GDPR · FDA 21 CFR Part 11
+  ════════════════════════════════════════════════════════════════════════
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+         https://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+    <modelVersion>4.0.0</modelVersion>
+
+    <!-- Spring Boot Parent — manages core Spring Boot dependency versions
+         3.5.8 includes patched Tomcat 10.1.x, Spring Framework 6.2.x, Spring Security 6.5.x -->
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.5.11</version>
+        <relativePath/>
+    </parent>
+
+    <!-- Project Coordinates -->
+    <groupId>com.biolab</groupId>
+    <artifactId>biolab-parent</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
+    <name>BioLabs Services Hub</name>
+    <description>Secure B2B platform for biotech experimentation services — HIPAA/GDPR/FDA compliant</description>
+
+    <!-- Sub-Modules -->
+    <modules>
+        <module>biolab-common</module>
+        <module>biolab-discovery-server</module>
+        <module>biolab-config-server</module>
+        <module>biolab-api-gateway</module>
+        <module>biolab-auth-service</module>
+        <module>biolab-user-service</module>
+        <module>biolab-catalog-service</module>
+        <module>biolab-project-service</module>
+        <module>biolab-invoice-service</module>
+        <module>biolab-messaging-service</module>
+        <module>biolab-document-service</module>
+        <module>biolab-notification-service</module>
+        <module>biolab-audit-service</module>
+    </modules>
+
+    <!-- Centralized Version Properties -->
+    <properties>
+        <java.version>17</java.version>
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+
+        <!-- Spring Cloud release train aligned with patched Spring Cloud Gateway -->
+        <spring-cloud.version>2025.0.1</spring-cloud.version>
+
+        <xstream.version>1.4.21</xstream.version>
+        <jettison.version>1.5.4</jettison.version>
+
+        <!-- OpenAPI / Swagger -->
+        <springdoc-openapi-webmvc.version>2.8.15</springdoc-openapi-webmvc.version>
+        <springdoc-openapi-webflux.version>2.8.15</springdoc-openapi-webflux.version>
+        <swagger-ui.version>5.31.0</swagger-ui.version>
+
+        <!-- Database -->
+        <postgresql.version>42.7.7</postgresql.version>
+
+        <!-- JWT -->
+        <jjwt.version>0.13.0</jjwt.version>
+
+        <!-- Utilities -->
+        <lombok.version>1.18.32</lombok.version>
+        <mapstruct.version>1.5.5.Final</mapstruct.version>
+
+        <!-- ELK Structured Logging -->
+        <logstash-logback.version>8.0</logstash-logback.version>
+
+        <!-- Test Dependencies -->
+        <h2.version>2.3.232</h2.version>
+        <commons-lang3.version>3.18.0</commons-lang3.version>
+        <logback.version>1.5.25</logback.version>
+        <tomcat.version>10.1.52</tomcat.version>
+        <httpclient.version>4.5.14</httpclient.version>
+        <guava.version>33.2.1-jre</guava.version>
+    </properties>
+
+    <!-- Dependency Management (BOM imports + version-locked artifacts) -->
+    <dependencyManagement>
+        <dependencies>
+            <!-- Spring Cloud BOM — manages all cloud starter versions -->
+            <dependency>
+                <groupId>org.springframework.cloud</groupId>
+                <artifactId>spring-cloud-dependencies</artifactId>
+                <version>${spring-cloud.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <dependency>
+                <groupId>ch.qos.logback</groupId>
+                <artifactId>logback-core</artifactId>
+                <version>${logback.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>ch.qos.logback</groupId>
+                <artifactId>logback-classic</artifactId>
+                <version>${logback.version}</version>
+            </dependency>
+
+            <!-- Force patched transitive dependencies used by Eureka stack -->
+            <dependency>
+                <groupId>com.thoughtworks.xstream</groupId>
+                <artifactId>xstream</artifactId>
+                <version>${xstream.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.codehaus.jettison</groupId>
+                <artifactId>jettison</artifactId>
+                <version>${jettison.version}</version>
+            </dependency>
+            <!-- OpenAPI / Swagger (WebMVC for servlet-based services) -->
+            <dependency>
+                <groupId>org.springdoc</groupId>
+                <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+                <version>${springdoc-openapi-webmvc.version}</version>
+            </dependency>
+
+            <!-- OpenAPI / Swagger (WebFlux for reactive gateway) -->
+            <dependency>
+                <groupId>org.springdoc</groupId>
+                <artifactId>springdoc-openapi-starter-webflux-ui</artifactId>
+                <version>${springdoc-openapi-webflux.version}</version>
+            </dependency>
+
+            <!-- Swagger UI Webjar — override transitive version from springdoc
+                 to patch XSS CVEs (CVE-2025-48924, CVE-2025-49125) -->
+            <dependency>
+                <groupId>org.webjars</groupId>
+                <artifactId>swagger-ui</artifactId>
+                <version>${swagger-ui.version}</version>
+            </dependency>
+
+            <!-- PostgreSQL JDBC Driver -->
+            <dependency>
+                <groupId>org.postgresql</groupId>
+                <artifactId>postgresql</artifactId>
+                <version>${postgresql.version}</version>
+            </dependency>
+
+            <!-- JJWT (JSON Web Token library) -->
+            <dependency>
+                <groupId>io.jsonwebtoken</groupId>
+                <artifactId>jjwt-api</artifactId>
+                <version>${jjwt.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.jsonwebtoken</groupId>
+                <artifactId>jjwt-impl</artifactId>
+                <version>${jjwt.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.jsonwebtoken</groupId>
+                <artifactId>jjwt-jackson</artifactId>
+                <version>${jjwt.version}</version>
+            </dependency>
+
+            <!-- BioLab Common Library -->
+            <dependency>
+                <groupId>com.biolab</groupId>
+                <artifactId>biolab-common</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <!-- MapStruct for DTO mapping -->
+            <dependency>
+                <groupId>org.mapstruct</groupId>
+                <artifactId>mapstruct</artifactId>
+                <version>${mapstruct.version}</version>
+            </dependency>
+
+            <!-- Logstash Logback Encoder — structured JSON log output for ELK -->
+            <dependency>
+                <groupId>net.logstash.logback</groupId>
+                <artifactId>logstash-logback-encoder</artifactId>
+                <version>${logstash-logback.version}</version>
+            </dependency>
+
+            <!-- H2 Database (test only — pinned to silence CVE-2022-45868 / CVE-2021-42392 flags) -->
+            <dependency>
+                <groupId>com.h2database</groupId>
+                <artifactId>h2</artifactId>
+                <version>${h2.version}</version>
+                <scope>test</scope>
+            </dependency>
+
+            <dependency>
+                <groupId>org.apache.httpcomponents</groupId>
+                <artifactId>httpclient</artifactId>
+                <version>4.5.14</version>
+            </dependency>
+
+            <!-- Force patched Guava for transitive pulls from Spring Cloud / Netflix stack -->
+            <dependency>
+                <groupId>com.google.guava</groupId>
+                <artifactId>guava</artifactId>
+                <version>${guava.version}</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <!-- Common Dependencies (inherited by ALL modules) -->
+    <dependencies>
+        <!-- Lombok — compile-time boilerplate elimination -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <!-- Actuator — health checks, metrics, readiness/liveness probes -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
+        <!-- Micrometer Prometheus — metrics export for Grafana dashboards -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+        </dependency>
+
+        <!-- Logstash Logback Encoder — JSON structured logging for ELK pipeline -->
+        <dependency>
+            <groupId>net.logstash.logback</groupId>
+            <artifactId>logstash-logback-encoder</artifactId>
+        </dependency>
+
+        <!-- Testing -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-lang3</artifactId>
+            <version>${commons-lang3.version}</version>
+        </dependency>
+    </dependencies>
+
+    <!-- Build Configuration -->
+    <build>
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-maven-plugin</artifactId>
+                    <configuration>
+                        <excludes>
+                            <exclude>
+                                <groupId>org.projectlombok</groupId>
+                                <artifactId>lombok</artifactId>
+                            </exclude>
+                        </excludes>
+                    </configuration>
+                </plugin>
+
+                <!-- OWASP Dependency-Check — scan for known CVEs in all modules -->
+                <plugin>
+                    <groupId>org.owasp</groupId>
+                    <artifactId>dependency-check-maven</artifactId>
+                    <version>12.1.0</version>
+                    <configuration>
+                        <failBuildOnCVSS>7</failBuildOnCVSS>
+                        <formats>
+                            <format>HTML</format>
+                            <format>JSON</format>
+                        </formats>
+                    </configuration>
+                </plugin>
+            </plugins>
+        </pluginManagement>
+    </build>
+
+</project>

@@ -1,0 +1,44 @@
+# ════════════════════════════════════════════════════════════════════════
+# Global Configuration — Applied to ALL microservices
+# Any service-specific file overrides these defaults.
+# ════════════════════════════════════════════════════════════════════════
+
+# ─── Common Eureka Client Settings ────────────────────────────────────
+eureka:
+  instance:
+    prefer-ip-address: true
+    lease-renewal-interval-in-seconds: 10
+    lease-expiration-duration-in-seconds: 30
+    metadata-map:
+      version: 1.0.0
+  client:
+    service-url:
+      defaultZone: http://${APP_EUREKA_USERNAME:admin}:${APP_EUREKA_PASSWORD:admin}@${EUREKA_HOST:localhost}:${EUREKA_PORT:8761}/eureka/
+    registry-fetch-interval-seconds: 10
+
+# ─── Common Actuator Settings ─────────────────────────────────────────
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus,refresh
+  endpoint:
+    health:
+      show-details: when-authorized
+      probes:
+        enabled: true
+
+# ─── Common Spring Settings ───────────────────────────────────────────
+spring:
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+    default-property-inclusion: non_null
+    time-zone: UTC
+
+# ─── Logging Defaults ─────────────────────────────────────────────────
+logging:
+  level:
+    root: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level [%logger{36}] - %msg%n"

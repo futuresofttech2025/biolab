@@ -1,0 +1,25 @@
+# Test profile — Gateway with Eureka disabled
+server:
+  port: 0
+
+spring:
+  cloud:
+    gateway:
+      discovery:
+        locator:
+          enabled: false
+    config:
+      enabled: false
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+eureka:
+  client:
+    enabled: false
+
+app:
+  jwt:
+    secret: BioLabTestSecretKeyForJWTSigningMustBeAtLeast256BitsLongForTesting!
+    issuer: biolab-auth-service

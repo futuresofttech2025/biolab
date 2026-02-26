@@ -1,0 +1,78 @@
+# ════════════════════════════════════════════════════════════════════════
+# BioLab User Service — User Profile & Organization Management
+# Port: 8082 | Schemas: sec_schema (users, roles), app_schema (orgs)
+# ════════════════════════════════════════════════════════════════════════
+
+server:
+  port: 8082
+  shutdown: graceful
+
+spring:
+  application:
+    name: biolab-user-service
+  config:
+    import: optional:configserver:http://${CONFIG_HOST:localhost}:${CONFIG_PORT:8888}
+
+  # ─── PostgreSQL (reads from both sec_schema and app_schema) ─────────
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:192.168.1.6}:${DB_PORT:5432}/${DB_NAME:postgres}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:postgres}
+    hikari:
+      maximum-pool-size: 15
+      minimum-idle: 5
+      connection-timeout: 30000
+      idle-timeout: 600000
+
+  # ─── JPA / Hibernate ────────────────────────────────────────────────
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        default_schema: sec_schema
+        format_sql: true
+        jdbc:
+          time_zone: UTC
+
+  # ─── Flyway (disabled — migrations run from Auth Service) ──────────
+  flyway:
+    enabled: false
+
+# ─── Eureka ───────────────────────────────────────────────────────────
+eureka:
+  instance:
+    prefer-ip-address: true
+  client:
+    service-url:
+      defaultZone: http://${APP_EUREKA_USERNAME:admin}:${APP_EUREKA_PASSWORD:admin}@${EUREKA_HOST:localhost}:${EUREKA_PORT:8761}/eureka/
+
+# ─── Actuator ─────────────────────────────────────────────────────────
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+
+# ─── Swagger ──────────────────────────────────────────────────────────
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
+# ─── Logging ──────────────────────────────────────────────────────────
+logging:
+  level:
+    root: INFO
+    com.biolab.user: DEBUG
+    org.springframework.security: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level [%logger{36}] - %msg%n"
+
+# ─── ELK Stack Logging ────────────────────────────────────────────────
+app:
+  elk:
+    logstash-host: ${LOGSTASH_HOST:logstash}
+    logstash-port: ${LOGSTASH_PORT:5000}

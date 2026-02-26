@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="Encoding">
+    <file url="file://$PROJECT_DIR$/biolab-api-gateway/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/biolab-audit-service/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/biolab-auth-service/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/biolab-catalog-service/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/biolab-common/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/biolab-config-server/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/biolab-discovery-server/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/biolab-document-service/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/biolab-invoice-service/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/biolab-messaging-service/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/biolab-notification-service/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/biolab-project-service/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/biolab-user-service/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/src/main/resources" charset="UTF-8" />
+  </component>
+</project>

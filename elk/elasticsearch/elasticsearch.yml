@@ -1,0 +1,20 @@
+# ═══════════════════════════════════════════════════════════════
+# BioLabs — Elasticsearch Configuration
+# ═══════════════════════════════════════════════════════════════
+cluster.name: "biolab-logs"
+network.host: 0.0.0.0
+
+# Single-node mode (development)
+discovery.type: single-node
+
+# Disable security for local dev (enable in production!)
+xpack.security.enabled: false
+xpack.security.enrollment.enabled: false
+xpack.security.http.ssl.enabled: false
+xpack.security.transport.ssl.enabled: false
+
+# Memory settings (keep low for dev)
+indices.memory.index_buffer_size: "20%"
+
+# ILM — auto-manage old indices
+xpack.monitoring.collection.enabled: false

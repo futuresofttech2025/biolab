@@ -1,0 +1,32 @@
+# ════════════════════════════════════════════════════════════════════════
+# BioLab API Gateway — Centralized Configuration
+# Pulled from Config Server at startup
+# ════════════════════════════════════════════════════════════════════════
+
+server:
+  port: 8080
+
+# ─── JWT Configuration ────────────────────────────────────────────────
+app:
+  jwt:
+    secret: ${JWT_SECRET:BioLabSecretKeyForJWTSigningMustBeAtLeast256BitsLong2026!}
+    issuer: biolab-auth-service
+
+# ─── Rate Limiting ────────────────────────────────────────────────────
+  rate-limit:
+    default-replenish-rate: 20
+    default-burst-capacity: 40
+
+# ─── CORS ─────────────────────────────────────────────────────────────
+  cors:
+    allowed-origins: http://localhost:3000,http://localhost:5173
+    allowed-methods: GET,POST,PUT,PATCH,DELETE,OPTIONS
+    allowed-headers: "*"
+    allow-credentials: true
+    max-age: 3600
+
+# ─── ELK Stack ──────────────────────────────────────────────────
+app:
+  elk:
+    logstash-host: ${LOGSTASH_HOST:logstash}
+    logstash-port: ${LOGSTASH_PORT:5000}

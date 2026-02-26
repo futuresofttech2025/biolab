@@ -1,0 +1,30 @@
+# ════════════════════════════════════════════════════════════════
+# BioLab User Service — Test Configuration
+# Uses H2 in-memory database, disables Eureka and Flyway.
+# ════════════════════════════════════════════════════════════════
+server:
+  port: 0
+
+spring:
+  datasource:
+    url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;MODE=PostgreSQL
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    properties:
+      hibernate:
+        default_schema: public
+    show-sql: true
+  flyway:
+    enabled: false
+
+eureka:
+  client:
+    enabled: false
+
+logging:
+  level:
+    com.biolab.user: DEBUG
