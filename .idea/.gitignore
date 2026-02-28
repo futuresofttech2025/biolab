@@ -8,4 +8,9 @@
 /dataSources.local.xml
 # Editor-based HTTP Client requests
 /httpRequests/
-.class
+# Java compiled classes
+*.class
+# Maven / Gradle outputs
+target/
+build/
+out/
