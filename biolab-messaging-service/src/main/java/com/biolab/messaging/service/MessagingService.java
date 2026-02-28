@@ -32,8 +32,13 @@ public class MessagingService {
         log.debug("Listing conversations for user={}", userId);
         return convRepo.findByParticipant(userId).stream().map(c -> {
             Page<Message> lastPage = msgRepo.findByConversationIdOrderByCreatedAtDesc(c.getId(), PageRequest.of(0, 1));
-            String lastMsg = lastPage.hasContent() ? lastPage.getContent().get(0).getContent() : "";
-            String lastTime = lastPage.hasContent() ? lastPage.getContent().get(0).getCreatedAt().toString() : "";
+            String lastMsg = "";
+            String lastTime = "";
+            if (lastPage.hasContent()) {
+                Message last = lastPage.getContent().get(0);
+                lastMsg = last.getContent();
+                lastTime = last.getCreatedAt() != null ? last.getCreatedAt().toString() : "";
+            }
             long unread = msgRepo.countByConversationIdAndIsReadFalseAndSenderIdNot(c.getId(), userId);
             return new ConversationDto(c.getId(), c.getProjectId(), c.getTitle(), c.getUpdatedAt(), lastMsg, lastTime, unread);
         }).collect(Collectors.toList());

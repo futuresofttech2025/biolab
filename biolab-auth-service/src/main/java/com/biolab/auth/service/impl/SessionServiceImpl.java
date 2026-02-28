@@ -71,7 +71,8 @@ public class SessionServiceImpl implements SessionService {
         log.warn("🔒 FORCE LOGOUT: Revoking all tokens and sessions for user: {}", userId);
         
         // 1. Revoke all refresh tokens
-        int revokedTokens = refreshTokenRepo.revokeAllByUserIdWithReason(userId, RevokedReason.ADMIN_REVOKED.name());
+        int revokedTokens = refreshTokenRepo.revokeAllByUserIdWithReason(
+                userId, RevokedReason.ADMIN_REVOKED, Instant.now());
         log.info("Revoked {} refresh tokens for user {}", revokedTokens, userId);
         
         // 2. Deactivate all sessions

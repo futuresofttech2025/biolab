@@ -549,7 +549,7 @@ class AuthServiceImplTest {
 
             TokenValidationResponse resp = authService.validateToken("valid-token");
 
-            assertThat(resp.getValid()).isTrue();
+            assertThat(resp.isValid()).isTrue();
             assertThat(resp.getUserId()).isEqualTo(userId.toString());
             assertThat(resp.getEmail()).isEqualTo(email);
         }
@@ -565,7 +565,7 @@ class AuthServiceImplTest {
 
             TokenValidationResponse resp = authService.validateToken("blacklisted-token");
 
-            assertThat(resp.getValid()).isFalse();
+            assertThat(resp.isValid()).isFalse();
         }
 
         @Test
@@ -575,7 +575,7 @@ class AuthServiceImplTest {
 
             TokenValidationResponse resp = authService.validateToken("garbage");
 
-            assertThat(resp.getValid()).isFalse();
+            assertThat(resp.isValid()).isFalse();
         }
     }
 

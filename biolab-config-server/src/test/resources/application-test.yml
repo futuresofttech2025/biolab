@@ -8,8 +8,6 @@ spring:
       server:
         native:
           search-locations: classpath:/test-config-repo
-  profiles:
-    active: native
 
 eureka:
   client:

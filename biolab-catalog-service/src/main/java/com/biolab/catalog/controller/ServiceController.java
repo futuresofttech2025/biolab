@@ -44,7 +44,7 @@ public class ServiceController {
     @ApiResponses({@ApiResponse(responseCode = "200", description = "Success"), @ApiResponse(responseCode = "401", description = "Unauthorized"), @ApiResponse(responseCode = "403", description = "Forbidden")})
     @Operation(summary = "List services for current supplier org")
     public ResponseEntity<Page<ServiceDto>> listMine(Pageable pageable) {
-        UUID orgId = UUID.fromString(CurrentUserContext.get().get().orgId());
+        UUID orgId = UUID.fromString(CurrentUserContext.require().orgId());
         return ResponseEntity.ok(catalogService.listBySupplier(orgId, pageable));
     }
 
@@ -53,7 +53,7 @@ public class ServiceController {
     @ApiResponses({@ApiResponse(responseCode = "201", description = "Created"), @ApiResponse(responseCode = "400", description = "Validation error")})
     @Operation(summary = "Create a new service")
     public ResponseEntity<ServiceDto> create(@Valid @RequestBody CreateServiceRequest req) {
-        UUID orgId = UUID.fromString(CurrentUserContext.get().get().orgId());
+        UUID orgId = UUID.fromString(CurrentUserContext.require().orgId());
         return ResponseEntity.status(HttpStatus.CREATED).body(catalogService.createService(req, orgId));
     }
 
@@ -76,7 +76,7 @@ public class ServiceController {
     @PreAuthorize("@perm.hasAnyRole('SUPPLIER','ADMIN','SUPER_ADMIN')")
     @Operation(summary = "Supplier catalog stats")
     public ResponseEntity<Map<String, Object>> stats() {
-        UUID orgId = UUID.fromString(CurrentUserContext.get().get().orgId());
+        UUID orgId = UUID.fromString(CurrentUserContext.require().orgId());
         return ResponseEntity.ok(catalogService.supplierStats(orgId));
     }
 }

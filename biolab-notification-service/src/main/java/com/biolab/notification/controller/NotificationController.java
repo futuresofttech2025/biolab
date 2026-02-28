@@ -27,7 +27,7 @@ public class NotificationController {
     @ApiResponses({@ApiResponse(responseCode = "200", description = "Success"), @ApiResponse(responseCode = "401", description = "Unauthorized"), @ApiResponse(responseCode = "403", description = "Forbidden")})
     @Operation(summary = "List notifications for current user")
     public ResponseEntity<Page<NotificationDto>> list(Pageable pageable) {
-        UUID userId = CurrentUserContext.get().get().userId();
+        UUID userId = CurrentUserContext.require().userId();
         return ResponseEntity.ok(service.list(userId, pageable));
     }
 
@@ -35,7 +35,7 @@ public class NotificationController {
     @ApiResponses({@ApiResponse(responseCode = "200", description = "Success"), @ApiResponse(responseCode = "404", description = "Not found")})
     @Operation(summary = "Get unread notification count")
     public ResponseEntity<Map<String, Long>> unreadCount() {
-        UUID userId = CurrentUserContext.get().get().userId();
+        UUID userId = CurrentUserContext.require().userId();
         return ResponseEntity.ok(Map.of("count", service.unreadCount(userId)));
     }
 
@@ -57,7 +57,7 @@ public class NotificationController {
     @PatchMapping("/read-all")
     @Operation(summary = "Mark all notifications as read")
     public ResponseEntity<Void> markAllRead() {
-        service.markAllRead(CurrentUserContext.get().get().userId());
+        service.markAllRead(CurrentUserContext.require().userId());
         return ResponseEntity.noContent().build();
     }
 
@@ -65,12 +65,12 @@ public class NotificationController {
     @ApiResponses({@ApiResponse(responseCode = "200", description = "Success"), @ApiResponse(responseCode = "404", description = "Not found")})
     @Operation(summary = "Get notification preferences")
     public ResponseEntity<NotificationPreferenceDto> getPrefs() {
-        return ResponseEntity.ok(service.getPreferences(CurrentUserContext.get().get().userId()));
+        return ResponseEntity.ok(service.getPreferences(CurrentUserContext.require().userId()));
     }
 
     @PutMapping("/preferences")
     @Operation(summary = "Update notification preferences")
     public ResponseEntity<NotificationPreferenceDto> updatePrefs(@RequestBody NotificationPreferenceDto dto) {
-        return ResponseEntity.ok(service.updatePreferences(CurrentUserContext.get().get().userId(), dto));
+        return ResponseEntity.ok(service.updatePreferences(CurrentUserContext.require().userId(), dto));
     }
 }

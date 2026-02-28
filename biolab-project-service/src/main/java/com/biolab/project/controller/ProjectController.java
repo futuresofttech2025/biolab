@@ -27,8 +27,8 @@ public class ProjectController {
     @ApiResponses({@ApiResponse(responseCode = "200", description = "Success"), @ApiResponse(responseCode = "401", description = "Unauthorized"), @ApiResponse(responseCode = "403", description = "Forbidden")})
     @Operation(summary = "List projects for current user's org")
     public ResponseEntity<Page<ProjectDto>> listMine(Pageable pageable) {
-        var user = CurrentUserContext.get();
-        return ResponseEntity.ok(projectService.listByOrg(UUID.fromString(user.get().orgId()), pageable));
+        var user = CurrentUserContext.require();
+        return ResponseEntity.ok(projectService.listByOrg(UUID.fromString(user.orgId()), pageable));
     }
 
     @GetMapping("/all")
@@ -86,8 +86,8 @@ public class ProjectController {
     @GetMapping("/stats")
     @Operation(summary = "Project statistics")
     public ResponseEntity<Map<String, Object>> stats() {
-        var user = CurrentUserContext.get();
-        String role = user.get().roles() != null && !user.get().roles().isEmpty() ? user.get().roles().get(0) : "BUYER";
-        return ResponseEntity.ok(projectService.stats(UUID.fromString(user.get().orgId()), role));
+        var user = CurrentUserContext.require();
+        String role = user.roles() != null && !user.roles().isEmpty() ? user.roles().get(0) : "BUYER";
+        return ResponseEntity.ok(projectService.stats(UUID.fromString(user.orgId()), role));
     }
 }

@@ -12,7 +12,7 @@ import org.springframework.test.context.ActiveProfiles;
  * @author BioLab Engineering Team
  */
 @SpringBootTest
-@ActiveProfiles("test")
+@ActiveProfiles({"test", "native"})
 class ConfigServerApplicationTest {
 
     @Test

@@ -6,6 +6,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import reactor.core.publisher.Mono;
 
+import java.util.Objects;
+
 /**
  * Redis-backed rate limiting configuration for the API Gateway.
  *
@@ -59,8 +61,8 @@ public class RateLimitConfig {
             if (ip != null && !ip.isBlank()) {
                 return Mono.just("ip:" + ip.split(",")[0].trim());
             }
-            return Mono.just("ip:" + exchange.getRequest()
-                    .getRemoteAddress().getAddress().getHostAddress());
+            return Mono.just("ip:" + Objects.requireNonNull(exchange.getRequest()
+                    .getRemoteAddress()).getAddress().getHostAddress());
         };
     }
 }

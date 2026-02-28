@@ -1,6 +1,7 @@
 package com.biolab.auth.repository;
 
 import com.biolab.auth.entity.RefreshToken;
+import com.biolab.auth.entity.enums.RevokedReason;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -50,8 +51,11 @@ public interface RefreshTokenRepository extends JpaRepository<RefreshToken, UUID
     // Change t.revokedAt to whatever the actual field name is
 
     @Modifying
-    @Query("UPDATE RefreshToken t SET t.isRevoked = true, t.revokedReason = :reason, t.revokedAt = CURRENT_TIMESTAMP WHERE t.user.id = :userId AND t.isRevoked = false")
-    int revokeAllByUserIdWithReason(@Param("userId") UUID userId, @Param("reason") String reason);
+    @Query("UPDATE RefreshToken t SET t.isRevoked = true, t.revokedReason = :reason, t.revokedAt = :revokedAt " +
+           "WHERE t.user.id = :userId AND t.isRevoked = false")
+    int revokeAllByUserIdWithReason(@Param("userId") UUID userId,
+                                    @Param("reason") RevokedReason reason,
+                                    @Param("revokedAt") Instant revokedAt);
 
     /** Count active (non-revoked, non-expired) sessions for a user. */
     @Query("SELECT COUNT(t) FROM RefreshToken t WHERE t.user.id = :userId " +

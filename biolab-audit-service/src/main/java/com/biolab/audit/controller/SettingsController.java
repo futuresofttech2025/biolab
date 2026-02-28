@@ -32,7 +32,7 @@ public class SettingsController {
     @PutMapping("/{key}")
     @Operation(summary = "Update a setting")
     public ResponseEntity<PlatformSettingDto> update(@PathVariable String key, @RequestBody Map<String, String> body) {
-        UUID userId = CurrentUserContext.get().get().userId();
+        UUID userId = CurrentUserContext.require().userId();
         return ResponseEntity.ok(service.updateSetting(key, body.get("value"), userId));
     }
 }

@@ -28,7 +28,7 @@ public class ServiceRequestController {
     @ApiResponses({@ApiResponse(responseCode = "200", description = "Success"), @ApiResponse(responseCode = "401", description = "Unauthorized"), @ApiResponse(responseCode = "403", description = "Forbidden")})
     @Operation(summary = "List incoming requests for supplier")
     public ResponseEntity<Page<ServiceRequestDto>> listForSupplier(Pageable pageable) {
-        UUID orgId = UUID.fromString(CurrentUserContext.get().get().orgId());
+        UUID orgId = UUID.fromString(CurrentUserContext.require().orgId());
         return ResponseEntity.ok(catalogService.listRequests(orgId, pageable));
     }
 
@@ -36,9 +36,9 @@ public class ServiceRequestController {
     @PreAuthorize("@perm.hasAnyRole('BUYER','ADMIN','SUPER_ADMIN')")
     @Operation(summary = "Submit a service request")
     public ResponseEntity<ServiceRequestDto> create(@Valid @RequestBody CreateServiceRequestRequest req) {
-        var user = CurrentUserContext.get();
+        var user = CurrentUserContext.require();
         return ResponseEntity.status(HttpStatus.CREATED)
-            .body(catalogService.createRequest(req, user.get().userId(), UUID.fromString(user.get().orgId())));
+            .body(catalogService.createRequest(req, user.userId(), UUID.fromString(user.orgId())));
     }
 
     @PatchMapping("/{id}/accept")

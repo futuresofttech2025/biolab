@@ -113,7 +113,7 @@ class AuditLogServiceImplTest {
             when(repo.findAll(any(Pageable.class))).thenReturn(new PageImpl<>(List.of(auditLog)));
             PageResponse<LoginAuditLogResponse> result = service.getAll(PageRequest.of(0, 20));
             assertThat(result.getContent()).hasSize(1);
-            assertThat(result.getHasNext()).isFalse();
+            assertThat(result.isHasNext()).isFalse();
         }
 
         @Test @DisplayName("[TC-AUTH-072] ✅ Should return page metadata correctly")
@@ -125,7 +125,7 @@ class AuditLogServiceImplTest {
             assertThat(result.getSize()).isEqualTo(10);
             assertThat(result.getTotalElements()).isEqualTo(25);
             assertThat(result.getTotalPages()).isEqualTo(3);
-            assertThat(result.getHasNext()).isTrue();
+            assertThat(result.isHasNext()).isTrue();
         }
 
         @Test @DisplayName("[TC-AUTH-073] ✅ Should return empty when no logs exist")

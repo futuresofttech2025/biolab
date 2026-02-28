@@ -483,7 +483,7 @@ class AuthServiceRbacConsentSessionTest {
         @Test
         @DisplayName("[TC-AUTH-063] ✅ Force logout revokes tokens and sessions")
         void forceLogout_Success() {
-            when(refreshTokenRepo.revokeAllByUserIdWithReason(eq(userId), anyString())).thenReturn(3);
+            when(refreshTokenRepo.revokeAllByUserIdWithReason(eq(userId), any(RevokedReason.class), any(Instant.class))).thenReturn(3);
             when(sessionRepo.deactivateAllUserSessions(userId)).thenReturn(2);
 
             int total = service.forceLogoutUser(userId);

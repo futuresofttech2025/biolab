@@ -26,7 +26,7 @@ public class InvoiceController {
     @ApiResponses({@ApiResponse(responseCode = "200", description = "Success"), @ApiResponse(responseCode = "401", description = "Unauthorized"), @ApiResponse(responseCode = "403", description = "Forbidden")})
     @Operation(summary = "List invoices for supplier org")
     public ResponseEntity<Page<InvoiceDto>> listSupplier(Pageable pageable) {
-        return ResponseEntity.ok(invoiceService.listBySupplier(UUID.fromString(CurrentUserContext.get().get().orgId()), pageable));
+        return ResponseEntity.ok(invoiceService.listBySupplier(UUID.fromString(CurrentUserContext.require().orgId()), pageable));
     }
 
     @GetMapping("/buyer")
@@ -34,7 +34,7 @@ public class InvoiceController {
     @ApiResponses({@ApiResponse(responseCode = "200", description = "Success"), @ApiResponse(responseCode = "401", description = "Unauthorized"), @ApiResponse(responseCode = "403", description = "Forbidden")})
     @Operation(summary = "List invoices for buyer org")
     public ResponseEntity<Page<InvoiceDto>> listBuyer(Pageable pageable) {
-        return ResponseEntity.ok(invoiceService.listByBuyer(UUID.fromString(CurrentUserContext.get().get().orgId()), pageable));
+        return ResponseEntity.ok(invoiceService.listByBuyer(UUID.fromString(CurrentUserContext.require().orgId()), pageable));
     }
 
     @GetMapping("/all")
@@ -65,7 +65,7 @@ public class InvoiceController {
     @Operation(summary = "Create an invoice")
     public ResponseEntity<InvoiceDto> create(@Valid @RequestBody CreateInvoiceRequest req) {
         return ResponseEntity.status(HttpStatus.CREATED)
-            .body(invoiceService.create(req, UUID.fromString(CurrentUserContext.get().get().orgId())));
+            .body(invoiceService.create(req, UUID.fromString(CurrentUserContext.require().orgId())));
     }
 
     @PatchMapping("/{id}/send")
@@ -83,12 +83,12 @@ public class InvoiceController {
     @GetMapping("/stats/supplier")
     @PreAuthorize("@perm.hasAnyRole('SUPPLIER','ADMIN','SUPER_ADMIN')")
     public ResponseEntity<Map<String, Object>> supplierStats() {
-        return ResponseEntity.ok(invoiceService.supplierStats(UUID.fromString(CurrentUserContext.get().get().orgId())));
+        return ResponseEntity.ok(invoiceService.supplierStats(UUID.fromString(CurrentUserContext.require().orgId())));
     }
 
     @GetMapping("/stats/buyer")
     @PreAuthorize("@perm.hasAnyRole('BUYER','ADMIN','SUPER_ADMIN')")
     public ResponseEntity<Map<String, Object>> buyerStats() {
-        return ResponseEntity.ok(invoiceService.buyerStats(UUID.fromString(CurrentUserContext.get().get().orgId())));
+        return ResponseEntity.ok(invoiceService.buyerStats(UUID.fromString(CurrentUserContext.require().orgId())));
     }
 }

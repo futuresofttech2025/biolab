@@ -50,7 +50,8 @@ class InvoiceServiceTest {
     // ── Create ──
     @Test @DisplayName("[TC-INV-008] ✅ Create invoice with tax") void create_Ok() {
         List<CreateInvoiceItemRequest> items = List.of(new CreateInvoiceItemRequest("HPLC Analysis", 2, BigDecimal.valueOf(500)));
-        CreateInvoiceRequest req = new CreateInvoiceRequest(buyerOrgId, projId, LocalDate.now().plusDays(30), "Net 30", items, BigDecimal.valueOf(18), "GST");
+        CreateInvoiceRequest req = new CreateInvoiceRequest(
+                buyerOrgId, projId, items, LocalDate.now().plusDays(30), BigDecimal.valueOf(18), "GST", "Net 30");
         when(repo.findMaxInvoiceSeq()).thenReturn(0);
         when(repo.save(any())).thenReturn(invoice);
 
@@ -62,7 +63,7 @@ class InvoiceServiceTest {
 
     @Test @DisplayName("[TC-INV-009] ✅ Create invoice defaults tax to zero and label to 'Tax'") void create_DefaultTax() {
         List<CreateInvoiceItemRequest> items = List.of(new CreateInvoiceItemRequest("Item", 1, BigDecimal.valueOf(100)));
-        CreateInvoiceRequest req = new CreateInvoiceRequest(buyerOrgId, projId, null, null, items, null, null);
+        CreateInvoiceRequest req = new CreateInvoiceRequest(buyerOrgId, projId, items, null, null, null, null);
         when(repo.findMaxInvoiceSeq()).thenReturn(5);
         ArgumentCaptor<Invoice> cap = ArgumentCaptor.forClass(Invoice.class);
         when(repo.save(cap.capture())).thenReturn(invoice);
@@ -76,7 +77,7 @@ class InvoiceServiceTest {
 
     @Test @DisplayName("[TC-INV-010] ✅ Create invoice auto-calculates due date when null") void create_DefaultDueDate() {
         List<CreateInvoiceItemRequest> items = List.of(new CreateInvoiceItemRequest("Item", 1, BigDecimal.TEN));
-        CreateInvoiceRequest req = new CreateInvoiceRequest(buyerOrgId, projId, null, null, items, null, null);
+        CreateInvoiceRequest req = new CreateInvoiceRequest(buyerOrgId, projId, items, null, null, null, null);
         when(repo.findMaxInvoiceSeq()).thenReturn(0);
         ArgumentCaptor<Invoice> cap = ArgumentCaptor.forClass(Invoice.class);
         when(repo.save(cap.capture())).thenReturn(invoice);
@@ -90,7 +91,7 @@ class InvoiceServiceTest {
                 new CreateInvoiceItemRequest("Item A", 2, BigDecimal.valueOf(100)),
                 new CreateInvoiceItemRequest("Item B", 3, BigDecimal.valueOf(200))
         );
-        CreateInvoiceRequest req = new CreateInvoiceRequest(buyerOrgId, projId, null, null, items, BigDecimal.valueOf(10), "VAT");
+        CreateInvoiceRequest req = new CreateInvoiceRequest(buyerOrgId, projId, items, null, BigDecimal.valueOf(10), "VAT", null);
         when(repo.findMaxInvoiceSeq()).thenReturn(0);
         ArgumentCaptor<Invoice> cap = ArgumentCaptor.forClass(Invoice.class);
         when(repo.save(cap.capture())).thenReturn(invoice);

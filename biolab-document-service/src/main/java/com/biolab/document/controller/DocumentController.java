@@ -32,7 +32,7 @@ public class DocumentController {
     @Operation(summary = "Upload a document")
     public ResponseEntity<DocumentDto> upload(@PathVariable UUID projectId,
                                               @RequestParam("file") MultipartFile file) throws Exception {
-        UUID userId = CurrentUserContext.get().get().userId();
+        UUID userId = CurrentUserContext.require().userId();
         return ResponseEntity.status(HttpStatus.CREATED).body(docService.upload(projectId, userId, file));
     }
 

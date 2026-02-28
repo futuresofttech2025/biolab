@@ -34,7 +34,7 @@ class ProjectServiceTest {
         project = new Project(); project.setId(projId); project.setTitle("Enzyme Kinetics Study");
         project.setBuyerOrgId(buyerOrgId); project.setSupplierOrgId(suppOrgId);
         project.setStatus("PENDING"); project.setProgressPct(0);
-        project.setBudget(BigDecimal.valueOf(5000)); project.setCreatedAt(Instant.now());
+        project.setBudget(BigDecimal.valueOf(5000));
     }
 
     // ── Projects CRUD ──
