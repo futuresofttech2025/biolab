@@ -5,6 +5,7 @@
 server:
   port: 8081
   shutdown: graceful
+
 spring:
   application:
     name: biolab-auth-service
@@ -36,6 +37,33 @@ spring:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
+
+  # ─── SMTP Mail (Gmail) ─────────────────────────────────────────────
+  # HOW TO GET A GMAIL APP PASSWORD:
+  #   1. Enable 2-Step Verification: https://myaccount.google.com/security
+  #   2. Go to: https://myaccount.google.com/apppasswords
+  #   3. Select "Mail" → "Other" → type "BioLabs" → Generate
+  #   4. Copy the 16-char password → set as MAIL_PASSWORD env var
+  #   NEVER commit real credentials to version control.
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: ${MAIL_USERNAME:ndate1976@gmail.com}
+    password: ${MAIL_PASSWORD:txlu yrnw eevh iblr}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
+          ssl:
+            trust: smtp.gmail.com
+          connectiontimeout: 5000
+          timeout: 5000
+          writetimeout: 5000
+    test-connection: false
+
 app:
   jwt:
     secret: ${JWT_SECRET:BioLabSecretKeyForJWTSigningMustBeAtLeast256BitsLong2026!}
@@ -51,17 +79,30 @@ app:
     elk:
       logstash-host: ${LOGSTASH_HOST:logstash}
       logstash-port: ${LOGSTASH_PORT:5000}
+
+  # ─── Mail sender identity ──────────────────────────────────────────
+  mail:
+    from: ${MAIL_FROM:biolab.noreply@gmail.com}
+    from-name: "BioLabs Platform"
+
+  # ─── Frontend base URL (appended to password-reset links) ─────────
+  frontend:
+    url: ${FRONTEND_URL:http://localhost:5173}
+
 eureka:
   instance:
     prefer-ip-address: true
   client:
     service-url:
       defaultZone: http://${APP_EUREKA_USERNAME:admin}:${APP_EUREKA_PASSWORD:admin}@${EUREKA_HOST:localhost}:${EUREKA_PORT:8761}/eureka/
+
 management:
   endpoints.web.exposure.include: health,info,metrics,prometheus
+
 springdoc:
   api-docs.path: /v3/api-docs
   swagger-ui.path: /swagger-ui.html
+
 logging:
   level:
     root: INFO
@@ -69,5 +110,3 @@ logging:
   pattern.console: "%d{HH:mm:ss.SSS} [%thread] %-5level [%logger{36}] - %msg%n"
 
 # ─── ELK Stack Logging ────────────────────────────────────────────────
-
-

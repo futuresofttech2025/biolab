@@ -35,7 +35,11 @@ public class SecurityHeadersFilter implements GlobalFilter, Ordered {
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
-        return chain.filter(exchange).then(Mono.fromRunnable(() -> {
+        // Add security headers BEFORE the response is committed.
+        // Using beforeCommit() ensures headers are set while they are still mutable.
+        // Previously, .then(Mono.fromRunnable(...)) ran AFTER the response was already
+        // written and committed, causing ReadOnlyHttpHeaders → UnsupportedOperationException.
+        exchange.getResponse().beforeCommit(() -> {
             HttpHeaders headers = exchange.getResponse().getHeaders();
 
             headers.set("X-Content-Type-Options", "nosniff");
@@ -55,7 +59,11 @@ public class SecurityHeadersFilter implements GlobalFilter, Ordered {
                 headers.set("Cache-Control", "no-store, no-cache, must-revalidate");
                 headers.set("Pragma", "no-cache");
             }
-        }));
+
+            return Mono.empty();
+        });
+
+        return chain.filter(exchange);
     }
 
     /** Runs after JWT filter but before response is sent. */

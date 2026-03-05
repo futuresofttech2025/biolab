@@ -8,44 +8,43 @@ import org.springframework.context.annotation.Configuration;
 /**
  * Programmatic route configuration for the API Gateway.
  *
- * <p>Defines routing rules that map incoming URI paths to backend
- * microservices discovered via Eureka. Each route includes circuit
- * breaker protection and path rewriting where needed.</p>
+ * <p><strong>No {@code stripPrefix} is used on any route.</strong>
+ * Every downstream microservice controller is mapped at {@code /api/**},
+ * so the full path must be forwarded as-is. Stripping {@code /api} would
+ * cause requests to bypass Spring Security {@code permitAll} rules and
+ * miss controller mappings — producing 403 or 405 responses.</p>
  *
  * <h3>Route Table:</h3>
  * <pre>
- *   /api/auth/**       → BIOLAB-AUTH-SERVICE
- *   /api/users/**      → BIOLAB-USER-SERVICE
- *   /api/services/**   → BIOLAB-CATALOG-SERVICE
- *   /api/categories/** → BIOLAB-CATALOG-SERVICE
- *   /api/projects/**   → BIOLAB-PROJECT-SERVICE
- *   /api/documents/**  → BIOLAB-DOCUMENT-SERVICE
- *   /api/invoices/**   → BIOLAB-INVOICE-SERVICE
+ *   /api/auth/**          → BIOLAB-AUTH-SERVICE    (login, register, password reset)
+ *   /api/admin/tokens/**  → BIOLAB-AUTH-SERVICE    (admin token management)
+ *   /api/users/**         → BIOLAB-USER-SERVICE
+ *   /api/organizations/** → BIOLAB-USER-SERVICE
+ *   /api/roles/**         → BIOLAB-USER-SERVICE
+ *   /api/services/**      → BIOLAB-CATALOG-SERVICE
+ *   /api/categories/**    → BIOLAB-CATALOG-SERVICE
+ *   /api/service-requests/** → BIOLAB-CATALOG-SERVICE
+ *   /api/projects/**      → BIOLAB-PROJECT-SERVICE
+ *   /api/documents/**     → BIOLAB-DOCUMENT-SERVICE
+ *   /api/invoices/**      → BIOLAB-INVOICE-SERVICE
  *   /api/conversations/** → BIOLAB-MESSAGING-SERVICE
  *   /api/notifications/** → BIOLAB-NOTIFICATION-SERVICE
- *   /api/audit/**      → BIOLAB-AUDIT-SERVICE
+ *   /api/audit/**         → BIOLAB-AUDIT-SERVICE
+ *   /api/compliance/**    → BIOLAB-AUDIT-SERVICE
  * </pre>
  *
- * <p>All routes use {@code lb://} URIs for Eureka-based client-side
- * load balancing.</p>
- *
  * @author BioLab Engineering Team
- * @version 1.0.0
+ * @version 1.1.0
  */
 @Configuration
 public class GatewayRouteConfig {
 
-    /**
-     * Builds the route locator with all microservice routes.
-     *
-     * @param builder the route locator builder
-     * @return the configured {@link RouteLocator}
-     */
     @Bean
     public RouteLocator biolabRoutes(RouteLocatorBuilder builder) {
         return builder.routes()
 
-                // ─── Auth Service ────────────────────────────────
+                // ─── Auth Service ─────────────────────────────────────────────
+                // No stripPrefix — AuthController is mapped at /api/auth/**
                 .route("auth-service", r -> r
                         .path("/api/auth/**")
                         .filters(f -> f
@@ -54,7 +53,7 @@ public class GatewayRouteConfig {
                                         .setFallbackUri("forward:/fallback/auth")))
                         .uri("lb://BIOLAB-AUTH-SERVICE"))
 
-                // ─── Admin Token Management (Auth Service) ──────
+                // ─── Admin Token Management (Auth Service) ────────────────────
                 .route("admin-token-service", r -> r
                         .path("/api/admin/tokens/**")
                         .filters(f -> f
@@ -63,7 +62,7 @@ public class GatewayRouteConfig {
                                         .setFallbackUri("forward:/fallback/auth")))
                         .uri("lb://BIOLAB-AUTH-SERVICE"))
 
-                // ─── User Service ────────────────────────────────
+                // ─── User Service ─────────────────────────────────────────────
                 .route("user-service", r -> r
                         .path("/api/users/**", "/api/organizations/**", "/api/roles/**")
                         .filters(f -> f
@@ -72,7 +71,7 @@ public class GatewayRouteConfig {
                                         .setFallbackUri("forward:/fallback/service")))
                         .uri("lb://BIOLAB-USER-SERVICE"))
 
-                // ─── Catalog Service ─────────────────────────────
+                // ─── Catalog Service ──────────────────────────────────────────
                 .route("catalog-service", r -> r
                         .path("/api/services/**", "/api/categories/**", "/api/service-requests/**")
                         .filters(f -> f
@@ -81,7 +80,7 @@ public class GatewayRouteConfig {
                                         .setFallbackUri("forward:/fallback/service")))
                         .uri("lb://BIOLAB-CATALOG-SERVICE"))
 
-                // ─── Project Service ─────────────────────────────
+                // ─── Project Service ──────────────────────────────────────────
                 .route("project-service", r -> r
                         .path("/api/projects/**")
                         .filters(f -> f
@@ -90,7 +89,7 @@ public class GatewayRouteConfig {
                                         .setFallbackUri("forward:/fallback/service")))
                         .uri("lb://BIOLAB-PROJECT-SERVICE"))
 
-                // ─── Document Service ────────────────────────────
+                // ─── Document Service ─────────────────────────────────────────
                 .route("document-service", r -> r
                         .path("/api/documents/**")
                         .filters(f -> f
@@ -99,7 +98,7 @@ public class GatewayRouteConfig {
                                         .setFallbackUri("forward:/fallback/service")))
                         .uri("lb://BIOLAB-DOCUMENT-SERVICE"))
 
-                // ─── Invoice Service ─────────────────────────────
+                // ─── Invoice Service ──────────────────────────────────────────
                 .route("invoice-service", r -> r
                         .path("/api/invoices/**")
                         .filters(f -> f
@@ -108,7 +107,7 @@ public class GatewayRouteConfig {
                                         .setFallbackUri("forward:/fallback/service")))
                         .uri("lb://BIOLAB-INVOICE-SERVICE"))
 
-                // ─── Messaging Service ───────────────────────────
+                // ─── Messaging Service ────────────────────────────────────────
                 .route("messaging-service", r -> r
                         .path("/api/conversations/**")
                         .filters(f -> f
@@ -117,7 +116,7 @@ public class GatewayRouteConfig {
                                         .setFallbackUri("forward:/fallback/service")))
                         .uri("lb://BIOLAB-MESSAGING-SERVICE"))
 
-                // ─── Notification Service ────────────────────────
+                // ─── Notification Service ─────────────────────────────────────
                 .route("notification-service", r -> r
                         .path("/api/notifications/**")
                         .filters(f -> f
@@ -126,7 +125,7 @@ public class GatewayRouteConfig {
                                         .setFallbackUri("forward:/fallback/service")))
                         .uri("lb://BIOLAB-NOTIFICATION-SERVICE"))
 
-                // ─── Audit Service ───────────────────────────────
+                // ─── Audit Service ────────────────────────────────────────────
                 .route("audit-service", r -> r
                         .path("/api/audit/**", "/api/compliance/**")
                         .filters(f -> f

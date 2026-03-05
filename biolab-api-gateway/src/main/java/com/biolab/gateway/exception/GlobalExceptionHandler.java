@@ -41,6 +41,16 @@ public class GlobalExceptionHandler implements ErrorWebExceptionHandler {
      */
     @Override
     public Mono<Void> handle(ServerWebExchange exchange, Throwable ex) {
+        // Guard: if the response is already committed (body written), we cannot
+        // modify headers or write a new body — just log and complete.
+        if (exchange.getResponse().isCommitted()) {
+            log.warn("Response already committed for {} {}. Cannot write error body. Original error: {} ({})",
+                    exchange.getRequest().getMethod(),
+                    exchange.getRequest().getURI().getPath(),
+                    ex.getMessage(), ex.getClass().getSimpleName());
+            return Mono.empty();
+        }
+
         HttpStatus status = HttpStatus.INTERNAL_SERVER_ERROR;
         String message = "An unexpected error occurred";
 

@@ -97,8 +97,13 @@ resilience4j:
         wait-duration-in-open-state: 10s
         permitted-number-of-calls-in-half-open-state: 5
     instances:
+      # Auth gets its own CB config — BCrypt + DB on password endpoints is slow
       authServiceCB:
-        base-config: default
+        sliding-window-size: 10
+        failure-rate-threshold: 60
+        wait-duration-in-open-state: 5s
+        permitted-number-of-calls-in-half-open-state: 3
+        minimum-number-of-calls: 5
       userServiceCB:
         base-config: default
       catalogServiceCB:
@@ -119,6 +124,12 @@ resilience4j:
     configs:
       default:
         timeout-duration: 4s
+    instances:
+      # Auth service timeout raised to 15s — BCrypt cost=12 + DB + async email = 5-8s
+      # The previous 4s timeout caused every reset-password call to be counted as a
+      # failure, tripping the circuit breaker open and returning 503 on healthy requests.
+      authServiceCB:
+        timeout-duration: 15s
 
 # ─── Actuator ─────────────────────────────────────────────────────────
 management:
