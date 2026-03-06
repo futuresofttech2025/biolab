@@ -6,9 +6,10 @@ import com.biolab.auth.entity.*;
 import com.biolab.auth.entity.enums.*;
 import com.biolab.auth.exception.*;
 import com.biolab.auth.repository.*;
+import com.biolab.auth.email.EmailService;
 import com.biolab.auth.security.JwtTokenProvider;
 import com.biolab.auth.service.AuthService;
-import com.biolab.auth.service.EmailService;
+import org.springframework.util.DigestUtils;
 import io.jsonwebtoken.Claims;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -19,14 +20,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
-import java.security.SecureRandom;
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
-import java.util.Base64;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -49,13 +44,12 @@ import java.util.UUID;
  *     1. Blacklist access token (by JTI)
  *     2. Revoke all refresh tokens for the user
  *
- *   PASSWORD CHANGE / RESET:
+ *   PASSWORD CHANGE:
  *     1. Revoke all refresh tokens (forces re-authentication)
- *     2. Send confirmation email
  * </pre>
  *
  * @author BioLab Engineering Team
- * @version 1.1.0
+ * @version 1.0.0
  */
 @Service
 @RequiredArgsConstructor
@@ -63,17 +57,18 @@ import java.util.UUID;
 @Transactional
 public class AuthServiceImpl implements AuthService {
 
-    private final UserRepository                 userRepository;
-    private final RefreshTokenRepository         refreshTokenRepository;
-    private final JwtTokenBlacklistRepository    blacklistRepository;
-    private final PasswordHistoryRepository      passwordHistoryRepository;
-    private final LoginAuditLogRepository        auditLogRepository;
-    private final MfaSettingsRepository          mfaSettingsRepository;
-    private final UserRoleRepository             userRoleRepository;
-    private final PasswordResetTokenRepository   passwordResetTokenRepository;
-    private final JwtTokenProvider               jwtTokenProvider;
-    private final PasswordEncoder                passwordEncoder;
-    private final EmailService                   emailService;
+    private final UserRepository userRepository;
+    private final RefreshTokenRepository refreshTokenRepository;
+    private final JwtTokenBlacklistRepository blacklistRepository;
+    private final PasswordHistoryRepository passwordHistoryRepository;
+    private final LoginAuditLogRepository auditLogRepository;
+    private final MfaSettingsRepository mfaSettingsRepository;
+    private final RoleRepository roleRepository;
+    private final UserRoleRepository userRoleRepository;
+    private final JwtTokenProvider jwtTokenProvider;
+    private final PasswordEncoder passwordEncoder;
+    private final EmailVerificationTokenRepository emailVerificationTokenRepository;
+    private final EmailService emailService;
 
     @Value("${app.security.max-login-attempts:5}")
     private int maxLoginAttempts;
@@ -83,9 +78,6 @@ public class AuthServiceImpl implements AuthService {
 
     @Value("${app.security.password-history-count:5}")
     private int passwordHistoryCount;
-
-    @Value("${app.frontend.url:http://localhost:5173}")
-    private String frontendUrl;
 
     // ─── REGISTER ────────────────────────────────────────────────────
 
@@ -104,6 +96,7 @@ public class AuthServiceImpl implements AuthService {
                 .lastName(request.getLastName().trim())
                 .phone(request.getPhone())
                 .passwordChangedAt(Instant.now())
+                .isEmailVerified(false)
                 .build();
 
         User saved = userRepository.save(user);
@@ -112,7 +105,21 @@ public class AuthServiceImpl implements AuthService {
         passwordHistoryRepository.save(PasswordHistory.builder()
                 .user(saved).passwordHash(saved.getPasswordHash()).build());
 
-        log.info("User registered: id={}", saved.getId());
+        // Assign role from request — only BUYER or SUPPLIER allowed via self-registration.
+        // ADMIN/SUPER_ADMIN must be provisioned manually via DB or admin API.
+        String requestedRole = (request.getRole() != null) ? request.getRole().toUpperCase().trim() : "BUYER";
+        if (!requestedRole.equals("SUPPLIER")) requestedRole = "BUYER"; // guard: no self-promotion to ADMIN
+        final String roleName = requestedRole;
+        roleRepository.findByName(roleName).ifPresentOrElse(
+                r -> userRoleRepository.save(UserRole.builder().user(saved).role(r).build()),
+                () -> roleRepository.findByName("BUYER").ifPresent(
+                        r -> userRoleRepository.save(UserRole.builder().user(saved).role(r).build()))
+        );
+
+        // Issue and send email verification token
+        sendNewVerificationToken(saved);
+
+        log.info("User registered: id={} — verification email dispatched", saved.getId());
 
         return RegisterResponse.builder()
                 .id(saved.getId()).email(saved.getEmail())
@@ -143,6 +150,11 @@ public class AuthServiceImpl implements AuthService {
             logAudit(user, request.getEmail(), ipAddress, userAgent,
                     LoginAction.FAILED_LOGIN, LoginStatus.FAILURE, "Account locked");
             throw new AuthException("Account locked until " + user.getLockedUntil(), HttpStatus.LOCKED);
+        }
+        if (!user.getIsEmailVerified()) {
+            logAudit(user, request.getEmail(), ipAddress, userAgent,
+                    LoginAction.FAILED_LOGIN, LoginStatus.FAILURE, "Email not verified");
+            throw new AuthException("Please verify your email before logging in. Check your inbox or request a new link.", HttpStatus.FORBIDDEN);
         }
 
         // Password verification
@@ -187,18 +199,23 @@ public class AuthServiceImpl implements AuthService {
 
         String tokenHash = JwtTokenProvider.hashToken(request.getRefreshToken());
 
+        // Look up the refresh token by its hash
         RefreshToken storedToken = refreshTokenRepository.findByTokenHash(tokenHash)
                 .orElseThrow(() -> new AuthException("Invalid refresh token", HttpStatus.UNAUTHORIZED));
 
         // ═══ REUSE DETECTION ═══
+        // If this token was already used (revoked), it means someone is replaying it.
+        // This could be an attacker who stole the old token. Revoke the ENTIRE family.
         if (storedToken.getIsRevoked()) {
             log.warn("🚨 REFRESH TOKEN REUSE DETECTED! Family={}, Generation={}, User={}",
                     storedToken.getTokenFamily(), storedToken.getGeneration(),
                     storedToken.getUser().getId());
 
+            // Revoke ALL tokens in this family
             int revoked = refreshTokenRepository.revokeAllByTokenFamily(storedToken.getTokenFamily());
             log.warn("Revoked {} tokens in family {}", revoked, storedToken.getTokenFamily());
 
+            // Audit log the reuse detection
             logAudit(storedToken.getUser(), storedToken.getUser().getEmail(),
                     ipAddress, userAgent, LoginAction.REUSE_DETECTED, LoginStatus.FAILURE,
                     "Family=" + storedToken.getTokenFamily() + " Gen=" + storedToken.getGeneration());
@@ -206,12 +223,14 @@ public class AuthServiceImpl implements AuthService {
             throw new TokenReusedException(storedToken.getTokenFamily().toString());
         }
 
+        // Check expiration
         if (storedToken.isExpired()) {
             storedToken.revoke(RevokedReason.EXPIRED_CLEANUP);
             refreshTokenRepository.save(storedToken);
             throw new AuthException("Refresh token expired", HttpStatus.UNAUTHORIZED);
         }
 
+        // Validate the JWT signature
         if (!jwtTokenProvider.isTokenValid(request.getRefreshToken())) {
             throw new AuthException("Invalid refresh token signature", HttpStatus.UNAUTHORIZED);
         }
@@ -228,14 +247,17 @@ public class AuthServiceImpl implements AuthService {
         int newGeneration = storedToken.getGeneration() + 1;
         UUID family = storedToken.getTokenFamily();
 
+        // Fetch user roles
         List<String> roles = userRoleRepository.findRoleNamesByUserId(user.getId());
         if (roles.isEmpty()) roles = List.of("BUYER");
 
-        String newAccessToken  = jwtTokenProvider.generateAccessToken(
+        // Generate new token pair
+        String newAccessToken = jwtTokenProvider.generateAccessToken(
                 user.getId(), user.getEmail(), roles, null);
         String newRefreshToken = jwtTokenProvider.generateRefreshToken(
                 user.getId(), family, newGeneration);
 
+        // Store the new refresh token
         refreshTokenRepository.save(RefreshToken.builder()
                 .user(user)
                 .tokenHash(JwtTokenProvider.hashToken(newRefreshToken))
@@ -267,6 +289,7 @@ public class AuthServiceImpl implements AuthService {
     public void logout(String accessToken, String refreshToken) {
         log.info("Logout request");
 
+        // Blacklist the access token
         if (accessToken != null) {
             try {
                 Claims claims = jwtTokenProvider.parseToken(accessToken);
@@ -276,15 +299,16 @@ public class AuthServiceImpl implements AuthService {
                             .jti(claims.getId()).user(user).tokenType(TokenType.ACCESS)
                             .expiresAt(claims.getExpiration().toInstant()).reason("User logout").build());
 
+                    // Revoke ALL refresh tokens for this user
                     int revoked = refreshTokenRepository.revokeAllByUserId(user.getId());
-                    log.info("Logout: blacklisted access token, revoked {} refresh tokens for user {}",
-                            revoked, user.getId());
+                    log.info("Logout: blacklisted access token, revoked {} refresh tokens for user {}", revoked, user.getId());
                 }
             } catch (Exception e) {
                 log.warn("Could not blacklist access token: {}", e.getMessage());
             }
         }
 
+        // Also revoke the specific refresh token if provided
         if (refreshToken != null) {
             String hash = JwtTokenProvider.hashToken(refreshToken);
             refreshTokenRepository.findByTokenHash(hash).ifPresent(rt -> {
@@ -304,145 +328,21 @@ public class AuthServiceImpl implements AuthService {
 
     // ─── PASSWORD MANAGEMENT ─────────────────────────────────────────
 
-    /**
-     * Initiates the forgot-password flow.
-     *
-     * <p>Always returns an identical generic response regardless of whether
-     * the email exists — prevents user enumeration attacks.</p>
-     *
-     * <p>When the email exists:</p>
-     * <ol>
-     *   <li>Invalidates all previous unused reset tokens for this user</li>
-     *   <li>Generates a cryptographically secure 256-bit URL-safe raw token</li>
-     *   <li>Stores only the BCrypt hash — raw token is never persisted</li>
-     *   <li>Sends the reset link asynchronously via email</li>
-     * </ol>
-     */
     @Override
     public MessageResponse forgotPassword(ForgotPasswordRequest request) {
-        String email = request.getEmail().trim().toLowerCase();
-        log.info("Password reset requested for: {}", email);
-
-        // Generic response — identical regardless of email existence
-        final MessageResponse GENERIC = MessageResponse.builder()
-                .message("If that email is registered, a reset link has been sent.")
-                .expiresIn(PasswordResetToken.EXPIRY_MINUTES + " minutes")
-                .build();
-
-        Optional<User> userOpt = userRepository.findByEmailIgnoreCase(email);
-        if (userOpt.isEmpty()) {
-            log.debug("Forgot-password request for unknown email (not revealing): {}", email);
-            return GENERIC;
-        }
-
-        User user = userOpt.get();
-
-        // Invalidate all previous unused tokens — one active token per user at a time
-        int invalidated = passwordResetTokenRepository.invalidateAllByUserId(user.getId(), Instant.now());
-        if (invalidated > 0) {
-            log.debug("Invalidated {} previous reset token(s) for user {}", invalidated, user.getId());
-        }
-
-        // Generate a cryptographically secure 256-bit URL-safe token
-        String rawToken  = generateSecureToken();
-        String tokenHash = passwordEncoder.encode(rawToken);
-        Instant expiresAt = Instant.now().plus(PasswordResetToken.EXPIRY_MINUTES, ChronoUnit.MINUTES);
-
-        PasswordResetToken prt = PasswordResetToken.builder()
-                .user(user)
-                .tokenHash(tokenHash)
-                .expiresAt(expiresAt)
-                .build();
-        passwordResetTokenRepository.save(prt);
-
-        // Build the reset URL — raw (un-hashed) token goes in the link
-        String resetLink = frontendUrl + "/reset-password?token="
-                + URLEncoder.encode(rawToken, StandardCharsets.UTF_8);
-
-        // Fire-and-forget async email — failure is logged, not re-thrown
-        emailService.sendPasswordResetEmail(
-                user.getEmail(), user.getFirstName(), resetLink, PasswordResetToken.EXPIRY_MINUTES);
-
-        log.info("Password reset token issued for user: {}, expires: {}", user.getId(), expiresAt);
-        return GENERIC;
+        log.info("Password reset requested for: {}", request.getEmail());
+        // Always return success to prevent email enumeration attacks
+        return MessageResponse.builder()
+                .message("If the email exists, a password reset link has been sent")
+                .expiresIn("15 minutes").build();
     }
 
-    /**
-     * Completes the password reset using a token from the reset email.
-     *
-     * <p>Security properties:</p>
-     * <ul>
-     *   <li>Token is BCrypt-matched against stored hashes (raw token never stored)</li>
-     *   <li>Token is single-use — marked used immediately on consumption</li>
-     *   <li>All refresh tokens are revoked → forces re-login with new password</li>
-     *   <li>Password history is enforced — cannot reuse last N passwords</li>
-     * </ul>
-     */
     @Override
     public MessageResponse resetPassword(ResetPasswordRequest request) {
-        String rawToken   = request.getToken().trim();
-        String newPassword = request.getNewPassword();
-
-        // Load all currently-valid tokens, BCrypt-match the raw token against each hash
-        List<PasswordResetToken> candidates = passwordResetTokenRepository
-                .findAll()
-                .stream()
-                .filter(PasswordResetToken::isValid)
-                .toList();
-
-        PasswordResetToken matched = candidates.stream()
-                .filter(t -> passwordEncoder.matches(rawToken, t.getTokenHash()))
-                .findFirst()
-                .orElseThrow(() -> new AuthException(
-                        "Invalid or expired reset token. Please request a new one.",
-                        HttpStatus.BAD_REQUEST));
-
-        User user = matched.getUser();
-
-        // Enforce password history — no reuse of last N passwords
-        List<PasswordHistory> history = passwordHistoryRepository
-                .findTop5ByUserIdOrderByCreatedAtDesc(user.getId());
-        for (PasswordHistory ph : history) {
-            if (passwordEncoder.matches(newPassword, ph.getPasswordHash())) {
-                throw new AuthException(
-                        "Cannot reuse any of your last " + passwordHistoryCount + " passwords.",
-                        HttpStatus.BAD_REQUEST);
-            }
-        }
-
-        // Consume the token — prevents replay within TTL window
-        matched.setUsed(true);
-        matched.setUsedAt(Instant.now());
-        passwordResetTokenRepository.save(matched);
-
-        // Update password
-        String newHash = passwordEncoder.encode(newPassword);
-        user.setPasswordHash(newHash);
-        user.setPasswordChangedAt(Instant.now());
-        userRepository.save(user);
-
-        // Persist to history
-        passwordHistoryRepository.save(PasswordHistory.builder()
-                .user(user).passwordHash(newHash).build());
-
-        // Revoke all refresh tokens — forces re-authentication with new password
-        refreshTokenRepository.revokeAllByUserId(user.getId());
-
-        // Notify user via async email
-        emailService.sendPasswordChangedEmail(user.getEmail(), user.getFirstName());
-
-        log.info("Password reset completed for user: {}, all sessions revoked", user.getId());
-        return MessageResponse.builder()
-                .message("Password reset successfully. Please log in with your new password.")
-                .build();
+        // TODO: Validate reset token and set new password
+        throw new AuthException("Password reset not yet implemented", HttpStatus.NOT_IMPLEMENTED);
     }
 
-    /**
-     * Changes a password for an authenticated user (from Settings).
-     *
-     * <p>Requires the current password for verification. All active sessions
-     * are revoked and a confirmation email is sent.</p>
-     */
     @Override
     public MessageResponse changePassword(String userId, ChangePasswordRequest request) {
         User user = userRepository.findById(UUID.fromString(userId))
@@ -452,13 +352,13 @@ public class AuthServiceImpl implements AuthService {
             throw new AuthException("Current password is incorrect", HttpStatus.BAD_REQUEST);
         }
 
-        // Enforce password history — no reuse of last N passwords
+        // Check password history (no reuse of last N passwords)
         List<PasswordHistory> history = passwordHistoryRepository
                 .findTop5ByUserIdOrderByCreatedAtDesc(user.getId());
         for (PasswordHistory ph : history) {
             if (passwordEncoder.matches(request.getNewPassword(), ph.getPasswordHash())) {
                 throw new AuthException(
-                        "Cannot reuse any of your last " + passwordHistoryCount + " passwords.",
+                        "Cannot reuse any of your last " + passwordHistoryCount + " passwords",
                         HttpStatus.BAD_REQUEST);
             }
         }
@@ -474,14 +374,84 @@ public class AuthServiceImpl implements AuthService {
         // Revoke ALL refresh tokens → forces re-authentication with new password
         refreshTokenRepository.revokeAllByUserId(user.getId());
 
-        // Notify user via async email
-        emailService.sendPasswordChangedEmail(user.getEmail(), user.getFirstName());
-
         log.info("Password changed for user: {}, all refresh tokens revoked", userId);
+        return MessageResponse.builder().message("Password changed successfully. Please log in again.").build();
+    }
+
+    // ─── EMAIL VERIFICATION ──────────────────────────────────────────
+
+    @Override
+    public MessageResponse verifyEmail(String rawToken) {
+        String hash = hashToken(rawToken);
+        EmailVerificationToken evt = emailVerificationTokenRepository.findByTokenHash(hash)
+                .orElseThrow(() -> new AuthException("Invalid or expired verification link.", HttpStatus.BAD_REQUEST));
+
+        if (!evt.isValid()) {
+            throw new AuthException(
+                    evt.getUsedAt() != null
+                            ? "This verification link has already been used."
+                            : "This verification link has expired. Please request a new one.",
+                    HttpStatus.BAD_REQUEST);
+        }
+
+        // Mark token consumed
+        evt.setUsedAt(Instant.now());
+        emailVerificationTokenRepository.save(evt);
+
+        // Activate user
+        User user = evt.getUser();
+        user.setIsEmailVerified(true);
+        userRepository.save(user);
+
+        log.info("Email verified for user: {}", user.getId());
+        return MessageResponse.builder().message("Email verified successfully. You can now log in.").build();
+    }
+
+    @Override
+    public MessageResponse resendVerificationEmail(String email) {
+        // Always return success — prevents email enumeration
+        userRepository.findByEmailIgnoreCase(email).ifPresent(user -> {
+            if (!user.getIsEmailVerified()) {
+                sendNewVerificationToken(user);
+                log.info("Verification email resent for user: {}", user.getId());
+            }
+        });
         return MessageResponse.builder()
-                .message("Password changed successfully. Please log in again.")
+                .message("If that email is registered and unverified, a new verification link has been sent.")
                 .build();
     }
+
+    /** Revoke old tokens, generate a secure random token, persist its hash, and email it. */
+    private void sendNewVerificationToken(User user) {
+        emailVerificationTokenRepository.revokeAllByUserId(user.getId());
+
+        String rawToken = UUID.randomUUID().toString().replace("-", "") +
+                UUID.randomUUID().toString().replace("-", ""); // 64-char random hex
+        String hash = hashToken(rawToken);
+
+        EmailVerificationToken evt = EmailVerificationToken.builder()
+                .user(user)
+                .tokenHash(hash)
+                .expiresAt(Instant.now().plusSeconds(24 * 60 * 60)) // 24 hours
+                .build();
+        emailVerificationTokenRepository.save(evt);
+
+        emailService.sendVerificationEmail(user.getEmail(), user.getFirstName(), rawToken);
+    }
+
+    /** SHA-256 hex digest — tokens are never stored in plain text. */
+    private String hashToken(String raw) {
+        try {
+            java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");
+            byte[] hash = md.digest(raw.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder();
+            for (byte b : hash) sb.append(String.format("%02x", b));
+            return sb.toString();
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new RuntimeException("SHA-256 unavailable", e);
+        }
+    }
+
 
     // ─── TOKEN VALIDATION (for API Gateway) ──────────────────────────
 
@@ -512,14 +482,16 @@ public class AuthServiceImpl implements AuthService {
         List<String> roles = userRoleRepository.findRoleNamesByUserId(user.getId());
         if (roles.isEmpty()) roles = List.of("BUYER");
 
+        // Create new token family for this login session
         UUID tokenFamily = UUID.randomUUID();
         int generation = 0;
 
-        String accessToken  = jwtTokenProvider.generateAccessToken(
+        String accessToken = jwtTokenProvider.generateAccessToken(
                 user.getId(), user.getEmail(), roles, null);
         String refreshToken = jwtTokenProvider.generateRefreshToken(
                 user.getId(), tokenFamily, generation);
 
+        // Persist refresh token (hashed) with family metadata
         refreshTokenRepository.save(RefreshToken.builder()
                 .user(user)
                 .tokenHash(JwtTokenProvider.hashToken(refreshToken))
@@ -551,28 +523,18 @@ public class AuthServiceImpl implements AuthService {
                 .action(action).status(status).failureReason(reason).build());
     }
 
-    // ─── HELPER: Cryptographically secure token generation ───────────
-
-    /** Generates a URL-safe Base64 encoded 256-bit secure random token. */
-    private String generateSecureToken() {
-        byte[] bytes = new byte[32]; // 256 bits
-        new SecureRandom().nextBytes(bytes);
-        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
-    }
-
     // ─── SCHEDULED: Cleanup expired tokens ───────────────────────────
 
     /** Runs every hour — removes expired refresh tokens and blacklist entries. */
-    @Scheduled(fixedRate = 3_600_000)
+    @Scheduled(fixedRate = 3600000)
     @Transactional
     public void cleanupExpiredTokens() {
         Instant now = Instant.now();
-        int refreshCleaned   = refreshTokenRepository.deleteExpiredTokens(now.minusSeconds(86400));
+        int refreshCleaned = refreshTokenRepository.deleteExpiredTokens(now.minusSeconds(86400));
         int blacklistCleaned = blacklistRepository.deleteExpiredTokens(now);
-        int resetCleaned     = passwordResetTokenRepository.deleteExpiredAndUsed(now);
-        if (refreshCleaned > 0 || blacklistCleaned > 0 || resetCleaned > 0) {
-            log.info("Token cleanup: {} refresh, {} blacklist, {} password-reset records removed",
-                    refreshCleaned, blacklistCleaned, resetCleaned);
+        if (refreshCleaned > 0 || blacklistCleaned > 0) {
+            log.info("Token cleanup: {} expired refresh tokens, {} expired blacklist entries removed",
+                    refreshCleaned, blacklistCleaned);
         }
     }
 }

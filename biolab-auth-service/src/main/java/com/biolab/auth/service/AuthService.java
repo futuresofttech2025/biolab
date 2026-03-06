@@ -20,4 +20,10 @@ public interface AuthService {
     MessageResponse resetPassword(ResetPasswordRequest request);
     MessageResponse changePassword(String userId, ChangePasswordRequest request);
     TokenValidationResponse validateToken(String token);
+
+    /** Verify email address using the token from the verification link. */
+    MessageResponse verifyEmail(String rawToken);
+
+    /** Resend verification email — rate-limited to once per minute per user. */
+    MessageResponse resendVerificationEmail(String email);
 }

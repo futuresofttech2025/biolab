@@ -1,27 +1,22 @@
 package com.biolab.gateway.config;
 
-import org.springframework.cloud.gateway.route.RouteLocator;
-import org.springframework.cloud.gateway.route.builder.RouteLocatorBuilder;
-import org.springframework.context.annotation.Bean;
-
 /**
- * DISABLED — All routes are defined in {@link GatewayRouteConfig}.
+ * DEAD CLASS — do not add {@code @Configuration}.
  *
- * <p>This class was incorrectly applying {@code stripPrefix(1)} to ALL routes,
- * which stripped the {@code /api} segment before forwarding to downstream services.
- * Since every microservice controller is mapped at {@code /api/**}, stripping
- * the prefix caused requests to miss the Spring Security {@code permitAll} rules
- * and controller mappings — resulting in 403 or 405 responses.</p>
+ * <p>This class previously defined gateway routes with incorrect
+ * {@code stripPrefix(1)} on all routes, stripping {@code /api} before
+ * forwarding to downstream services. This caused:</p>
+ * <ul>
+ *   <li>Auth service receiving {@code /auth/login} instead of {@code /api/auth/login}
+ *       → Spring Security returned 401 (not in permitAll)</li>
+ *   <li>Circuit breaker counting every responses as a failure → 503 loops</li>
+ * </ul>
  *
- * <p>{@code @Configuration} is intentionally removed. Do not re-add it.</p>
+ * <p>All routes are now defined exclusively in {@link GatewayRouteConfig}
+ * with no prefix stripping.</p>
  *
- * @deprecated Replaced by {@link GatewayRouteConfig}
+ * @deprecated Replaced by {@link GatewayRouteConfig}. Do not restore.
  */
 public class RouteConfig {
-
-    @Bean
-    public RouteLocator customRouteLocator(RouteLocatorBuilder builder) {
-        // This bean is never loaded — @Configuration is removed from class.
-        return builder.routes().build();
-    }
+    // intentionally empty — no @Configuration, no @Bean
 }

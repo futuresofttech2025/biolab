@@ -96,7 +96,7 @@ VALUES
     ON CONFLICT DO NOTHING;
 
 -- ─── 5. GDPR Consent records ─────────────────────────────────────────────
-select * from sec_schema.consent_records
+
 
     INSERT INTO sec_schema.consent_records
 (id, user_id, consent_type, version, granted_at, revoked_at, ip_address, created_at, updated_at)

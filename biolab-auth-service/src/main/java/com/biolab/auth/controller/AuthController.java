@@ -83,8 +83,23 @@ public class AuthController {
     @PostMapping("/change-password")
     @Operation(summary = "Change password (authenticated)")
     public ResponseEntity<MessageResponse> changePassword(@RequestHeader("X-User-Id") String userId,
-            @Valid @RequestBody ChangePasswordRequest request) {
+                                                          @Valid @RequestBody ChangePasswordRequest request) {
         return ResponseEntity.ok(authService.changePassword(userId, request));
+    }
+
+    @GetMapping("/verify-email")
+    @Operation(summary = "Verify email address via token link")
+    @ApiResponses({@ApiResponse(responseCode="200"), @ApiResponse(responseCode="400", description="Invalid/expired token")})
+    public ResponseEntity<MessageResponse> verifyEmail(
+            @RequestParam("token") String token) {
+        return ResponseEntity.ok(authService.verifyEmail(token));
+    }
+
+    @PostMapping("/resend-verification")
+    @Operation(summary = "Resend email verification link")
+    public ResponseEntity<MessageResponse> resendVerification(
+            @RequestBody ResendVerificationRequest request) {
+        return ResponseEntity.ok(authService.resendVerificationEmail(request.getEmail()));
     }
 
     @GetMapping("/validate-token")

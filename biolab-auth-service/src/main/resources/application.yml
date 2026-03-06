@@ -5,23 +5,22 @@
 server:
   port: 8081
   shutdown: graceful
-
 spring:
   application:
     name: biolab-auth-service
   config:
     import: optional:configserver:http://${CONFIG_HOST:localhost}:${CONFIG_PORT:8888}
   datasource:
-    url: jdbc:postgresql://${DB_HOST:192.168.1.6}:${DB_PORT:5432}/${DB_NAME:postgres}
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:postgres}
     username: ${DB_USERNAME:postgres}
-    password: ${DB_PASSWORD:postgres}
+    password: ${DB_PASSWORD:admin}
     hikari:
       maximum-pool-size: 20
       minimum-idle: 5
       connection-timeout: 30000
   jpa:
     hibernate:
-      ddl-auto: validate
+      ddl-auto: none
     show-sql: false
     properties:
       hibernate:
@@ -29,27 +28,13 @@ spring:
         format_sql: true
         jdbc.time_zone: UTC
   flyway:
-    enabled: true
-    locations: classpath:db/migration
-    schemas: sec_schema,app_schema
-    baseline-on-migrate: true
-  data:
-    redis:
-      host: ${REDIS_HOST:localhost}
-      port: ${REDIS_PORT:6379}
-
-  # ─── SMTP Mail (Gmail) ─────────────────────────────────────────────
-  # HOW TO GET A GMAIL APP PASSWORD:
-  #   1. Enable 2-Step Verification: https://myaccount.google.com/security
-  #   2. Go to: https://myaccount.google.com/apppasswords
-  #   3. Select "Mail" → "Other" → type "BioLabs" → Generate
-  #   4. Copy the 16-char password → set as MAIL_PASSWORD env var
-  #   NEVER commit real credentials to version control.
+    enabled: false
+  # ─── JavaMail ─────────────────────────────────────────────────────────
   mail:
     host: smtp.gmail.com
     port: 587
     username: ${MAIL_USERNAME:ndate1976@gmail.com}
-    password: ${MAIL_PASSWORD:txlu yrnw eevh iblr}
+    password: ${MAIL_PASSWORD:txluyrnweevhiblr}
     properties:
       mail:
         smtp:
@@ -63,8 +48,20 @@ spring:
           timeout: 5000
           writetimeout: 5000
     test-connection: false
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
 
 app:
+  # ─── Email sender identity — read by EmailService ──────────────────
+  email:
+    from: ${MAIL_FROM:ndate1976@gmail.com}          # must match spring.mail.username
+    from-name: ${MAIL_FROM_NAME:BioLabs Platform}
+
+  # ─── Frontend URL — read by EmailService for link generation ───────
+  frontend-url: ${FRONTEND_URL:http://localhost:5173}
+
   jwt:
     secret: ${JWT_SECRET:BioLabSecretKeyForJWTSigningMustBeAtLeast256BitsLong2026!}
     access-token-expiration-ms: 900000
@@ -80,33 +77,19 @@ app:
       logstash-host: ${LOGSTASH_HOST:logstash}
       logstash-port: ${LOGSTASH_PORT:5000}
 
-  # ─── Mail sender identity ──────────────────────────────────────────
-  mail:
-    from: ${MAIL_FROM:biolab.noreply@gmail.com}
-    from-name: "BioLabs Platform"
-
-  # ─── Frontend base URL (appended to password-reset links) ─────────
-  frontend:
-    url: ${FRONTEND_URL:http://localhost:5173}
-
 eureka:
   instance:
     prefer-ip-address: true
   client:
     service-url:
       defaultZone: http://${APP_EUREKA_USERNAME:admin}:${APP_EUREKA_PASSWORD:admin}@${EUREKA_HOST:localhost}:${EUREKA_PORT:8761}/eureka/
-
 management:
   endpoints.web.exposure.include: health,info,metrics,prometheus
-
 springdoc:
   api-docs.path: /v3/api-docs
   swagger-ui.path: /swagger-ui.html
-
 logging:
   level:
     root: INFO
     com.biolab.auth: DEBUG
   pattern.console: "%d{HH:mm:ss.SSS} [%thread] %-5level [%logger{36}] - %msg%n"
-
-# ─── ELK Stack Logging ────────────────────────────────────────────────

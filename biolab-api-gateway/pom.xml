@@ -84,6 +84,14 @@
             <scope>runtime</scope>
         </dependency>
 
+        <!-- Spring Security (reactive/WebFlux) — required for SecurityWebFilterChain.
+             spring-cloud-gateway pulls spring-security-web transitively; without an
+             explicit SecurityWebFilterChain bean the default denies all traffic with 401. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+
         <!-- Bean Validation -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

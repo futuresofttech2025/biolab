@@ -1,6 +1,6 @@
 ﻿<?xml version="1.0" encoding="UTF-8"?>
 <!--
-  BioLab Auth Service — Authentication & Authorization Microservice
+  BioLab Auth Service â€” Authentication & Authorization Microservice
   Port: 8081 | Schema: sec_schema | JWT + Refresh Token Rotation
 -->
 <project xmlns="http://maven.apache.org/POM/4.0.0"
@@ -13,13 +13,13 @@
         <version>1.0.0-SNAPSHOT</version>
     </parent>
     <artifactId>biolab-auth-service</artifactId>
-    <description>Authentication — JWT, refresh token rotation, MFA, password management</description>
+    <description>Authentication â€” JWT, refresh token rotation, MFA, password management</description>
     <dependencies>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
-        <!-- Actuator — health, metrics, info endpoints -->
+        <!-- Actuator â€” health, metrics, info endpoints -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
@@ -39,11 +39,6 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-redis</artifactId>
-        </dependency>
-        <!-- Spring Mail — JavaMailSender / SMTP / Gmail -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-mail</artifactId>
         </dependency>
         <dependency>
             <groupId>org.postgresql</groupId>
@@ -112,6 +107,12 @@
         <dependency>
             <groupId>com.biolab</groupId>
             <artifactId>biolab-common</artifactId>
+        </dependency>
+
+        <!-- Email — SMTP for verification and password-reset emails -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-mail</artifactId>
         </dependency>
     </dependencies>
     <build>
