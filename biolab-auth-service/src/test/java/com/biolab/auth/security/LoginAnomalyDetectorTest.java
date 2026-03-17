@@ -1,5 +1,6 @@
 package com.biolab.auth.security;
 
+import com.biolab.auth.entity.enums.LoginStatus;
 import com.biolab.auth.repository.LoginAuditLogRepository;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -40,7 +41,7 @@ class LoginAnomalyDetectorTest {
     @Test @DisplayName("[TC-AUTH-138] ✅ +2 for brute force (3+ failures)")
     void bruteForce() {
         when(auditLogRepo.existsByUserIdAndIpAddressAndCreatedAtAfter(any(), any(), any())).thenReturn(true);
-        when(auditLogRepo.countByIpAddressAndStatusAndCreatedAtAfter(any(), eq("FAILURE"), any())).thenReturn(5L);
+        when(auditLogRepo.countByIpAddressAndStatusAndCreatedAtAfter(any(), eq(LoginStatus.FAILURE), any())).thenReturn(5L);
         when(auditLogRepo.countDistinctUserIdByIpAddressAndCreatedAtAfter(any(), any())).thenReturn(1L);
         assertThat(detector.calculateAnomalyScore(userId, "1.1.1.1", "X")).isEqualTo(2);
     }

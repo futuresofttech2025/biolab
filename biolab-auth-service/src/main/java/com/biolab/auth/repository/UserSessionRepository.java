@@ -13,20 +13,20 @@ import java.util.UUID;
 /** Repository for {@code sec_schema.user_sessions} — session management. */
 @Repository
 public interface UserSessionRepository extends JpaRepository<UserSession, UUID> {
-    
+
     List<UserSession> findByUserIdAndIsActiveTrue(UUID userId);
 
     Optional<UserSession> findBySessionToken(String sessionToken);
-    
+
     long countByUserIdAndIsActiveTrue(UUID userId);
-    
+
     /** Count all active sessions platform-wide. */
     long countByIsActiveTrue();
-    
+
     /** Count distinct users with active sessions. */
     @Query("SELECT COUNT(DISTINCT s.user.id) FROM UserSession s WHERE s.isActive = true")
     long countDistinctUsersByIsActiveTrue();
-    
+
     /** Count sessions created after a certain time. */
     long countByCreatedAtAfter(Instant timestamp);
 
@@ -36,4 +36,7 @@ public interface UserSessionRepository extends JpaRepository<UserSession, UUID> 
     int deactivateAllUserSessions(UUID userId);
 
     List<UserSession> findByUserIdAndIsActiveTrueOrderByCreatedAtDesc(UUID userId);
+
+    /** SESSION FIX: find the session linked to a specific refresh token (for logout). */
+    java.util.Optional<UserSession> findByRefreshTokenId(UUID refreshTokenId);
 }

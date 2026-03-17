@@ -10,6 +10,7 @@ import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.*;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpStatus;
 
 import java.time.Instant;
 import java.util.*;
@@ -20,6 +21,16 @@ import static org.mockito.Mockito.*;
 
 /**
  * Comprehensive unit tests for auth-service RBAC, Consent, and Session services.
+ *
+ * <h3>Changes from original</h3>
+ * <ul>
+ *   <li>TC-AUTH-061: {@code service.terminateSession(sessionId)} →
+ *       {@code service.terminateSession(userId, sessionId)} — FIX-17</li>
+ *   <li>TC-AUTH-062: same one-arg → two-arg update — FIX-17</li>
+ *   <li>TC-AUTH-NEW: added ownership-violation test — FIX-17</li>
+ *   <li>UserSession in TC-AUTH-061 now has {@code user} set so the ownership
+ *       check passes for the happy-path test</li>
+ * </ul>
  */
 @ExtendWith(MockitoExtension.class)
 @DisplayName("Auth Service — RBAC, Consent & Session Tests")
@@ -46,8 +57,7 @@ class AuthServiceRbacConsentSessionTest {
             sampleRole.setCreatedAt(Instant.now());
         }
 
-        @Test
-        @DisplayName("[TC-AUTH-029] ✅ Create role successfully")
+        @Test @DisplayName("[TC-AUTH-029] ✅ Create role successfully")
         void create_Success() {
             RoleCreateRequest req = new RoleCreateRequest();
             req.setName("data_analyst"); req.setDisplayName("Data Analyst"); req.setDescription("Desc");
@@ -58,8 +68,7 @@ class AuthServiceRbacConsentSessionTest {
             assertThat(resp.getName()).isEqualTo("DATA_ANALYST");
         }
 
-        @Test
-        @DisplayName("[TC-AUTH-030] ❌ Create role with duplicate name")
+        @Test @DisplayName("[TC-AUTH-030] ❌ Create role with duplicate name")
         void create_Duplicate() {
             RoleCreateRequest req = new RoleCreateRequest();
             req.setName("ADMIN"); req.setDisplayName("Admin");
@@ -68,43 +77,37 @@ class AuthServiceRbacConsentSessionTest {
             assertThatThrownBy(() -> service.create(req)).isInstanceOf(DuplicateResourceException.class);
         }
 
-        @Test
-        @DisplayName("[TC-AUTH-031] ✅ Get all roles returns list")
+        @Test @DisplayName("[TC-AUTH-031] ✅ Get all roles returns list")
         void getAll_Success() {
             when(repo.findAll()).thenReturn(List.of(sampleRole));
             assertThat(service.getAll()).hasSize(1);
         }
 
-        @Test
-        @DisplayName("[TC-AUTH-032] ✅ Get role by ID")
+        @Test @DisplayName("[TC-AUTH-032] ✅ Get role by ID")
         void getById_Success() {
             when(repo.findById(roleId)).thenReturn(Optional.of(sampleRole));
             assertThat(service.getById(roleId).getName()).isEqualTo("DATA_ANALYST");
         }
 
-        @Test
-        @DisplayName("[TC-AUTH-033] ❌ Get role by non-existent ID")
+        @Test @DisplayName("[TC-AUTH-033] ❌ Get role by non-existent ID")
         void getById_NotFound() {
             when(repo.findById(any())).thenReturn(Optional.empty());
             assertThatThrownBy(() -> service.getById(UUID.randomUUID())).isInstanceOf(ResourceNotFoundException.class);
         }
 
-        @Test
-        @DisplayName("[TC-AUTH-034] ✅ Get role by name")
+        @Test @DisplayName("[TC-AUTH-034] ✅ Get role by name")
         void getByName_Success() {
             when(repo.findByName("DATA_ANALYST")).thenReturn(Optional.of(sampleRole));
             assertThat(service.getByName("DATA_ANALYST").getId()).isEqualTo(roleId);
         }
 
-        @Test
-        @DisplayName("[TC-AUTH-035] ❌ Get role by non-existent name")
+        @Test @DisplayName("[TC-AUTH-035] ❌ Get role by non-existent name")
         void getByName_NotFound() {
             when(repo.findByName("GHOST")).thenReturn(Optional.empty());
             assertThatThrownBy(() -> service.getByName("GHOST")).isInstanceOf(ResourceNotFoundException.class);
         }
 
-        @Test
-        @DisplayName("[TC-AUTH-036] ✅ Update role partial fields")
+        @Test @DisplayName("[TC-AUTH-036] ✅ Update role partial fields")
         void update_Success() {
             RoleUpdateRequest req = new RoleUpdateRequest();
             req.setDescription("Updated desc");
@@ -116,24 +119,21 @@ class AuthServiceRbacConsentSessionTest {
             verify(repo).save(any());
         }
 
-        @Test
-        @DisplayName("[TC-AUTH-037] ❌ Update non-existent role")
+        @Test @DisplayName("[TC-AUTH-037] ❌ Update non-existent role")
         void update_NotFound() {
             when(repo.findById(any())).thenReturn(Optional.empty());
             assertThatThrownBy(() -> service.update(UUID.randomUUID(), new RoleUpdateRequest()))
                     .isInstanceOf(ResourceNotFoundException.class);
         }
 
-        @Test
-        @DisplayName("[TC-AUTH-038] ✅ Delete role")
+        @Test @DisplayName("[TC-AUTH-038] ✅ Delete role")
         void delete_Success() {
             when(repo.existsById(roleId)).thenReturn(true);
             service.delete(roleId);
             verify(repo).deleteById(roleId);
         }
 
-        @Test
-        @DisplayName("[TC-AUTH-039] ❌ Delete non-existent role")
+        @Test @DisplayName("[TC-AUTH-039] ❌ Delete non-existent role")
         void delete_NotFound() {
             when(repo.existsById(any())).thenReturn(false);
             assertThatThrownBy(() -> service.delete(UUID.randomUUID())).isInstanceOf(ResourceNotFoundException.class);
@@ -160,8 +160,7 @@ class AuthServiceRbacConsentSessionTest {
             perm.setId(permId); perm.setCreatedAt(Instant.now());
         }
 
-        @Test
-        @DisplayName("[TC-AUTH-040] ✅ Create permission successfully")
+        @Test @DisplayName("[TC-AUTH-040] ✅ Create permission successfully")
         void create_Success() {
             PermissionCreateRequest req = new PermissionCreateRequest();
             req.setName("REPORT_EXPORT"); req.setModule("REPORT"); req.setAction("EXPORT");
@@ -171,8 +170,7 @@ class AuthServiceRbacConsentSessionTest {
             assertThat(service.create(req).getName()).isEqualTo("REPORT_EXPORT");
         }
 
-        @Test
-        @DisplayName("[TC-AUTH-041] ❌ Create permission with duplicate name")
+        @Test @DisplayName("[TC-AUTH-041] ❌ Create permission with duplicate name")
         void create_Duplicate() {
             PermissionCreateRequest req = new PermissionCreateRequest();
             req.setName("USER_CREATE"); req.setModule("USER"); req.setAction("CREATE");
@@ -181,22 +179,19 @@ class AuthServiceRbacConsentSessionTest {
             assertThatThrownBy(() -> service.create(req)).isInstanceOf(DuplicateResourceException.class);
         }
 
-        @Test
-        @DisplayName("[TC-AUTH-042] ✅ Get permissions by module")
+        @Test @DisplayName("[TC-AUTH-042] ✅ Get permissions by module")
         void getByModule_Success() {
             when(repo.findByModule("REPORT")).thenReturn(List.of(perm));
             assertThat(service.getByModule("REPORT")).hasSize(1);
         }
 
-        @Test
-        @DisplayName("[TC-AUTH-043] ✅ Get permissions by module returns empty when none exist")
+        @Test @DisplayName("[TC-AUTH-043] ✅ Get permissions by module returns empty when none exist")
         void getByModule_Empty() {
             when(repo.findByModule("NONEXISTENT")).thenReturn(List.of());
             assertThat(service.getByModule("NONEXISTENT")).isEmpty();
         }
 
-        @Test
-        @DisplayName("[TC-AUTH-044] ❌ Delete non-existent permission")
+        @Test @DisplayName("[TC-AUTH-044] ❌ Delete non-existent permission")
         void delete_NotFound() {
             when(repo.existsById(any())).thenReturn(false);
             assertThatThrownBy(() -> service.delete(UUID.randomUUID())).isInstanceOf(ResourceNotFoundException.class);
@@ -228,8 +223,7 @@ class AuthServiceRbacConsentSessionTest {
             role.setId(roleId); role.setCreatedAt(Instant.now());
         }
 
-        @Test
-        @DisplayName("[TC-AUTH-045] ✅ Assign role to user")
+        @Test @DisplayName("[TC-AUTH-045] ✅ Assign role to user")
         void assign_Success() {
             UserRoleAssignRequest req = new UserRoleAssignRequest();
             req.setRoleId(roleId);
@@ -247,8 +241,7 @@ class AuthServiceRbacConsentSessionTest {
             assertThat(resp.getUserId()).isEqualTo(userId);
         }
 
-        @Test
-        @DisplayName("[TC-AUTH-046] ❌ Assign duplicate role")
+        @Test @DisplayName("[TC-AUTH-046] ❌ Assign duplicate role")
         void assign_Duplicate() {
             UserRoleAssignRequest req = new UserRoleAssignRequest();
             req.setRoleId(roleId);
@@ -261,8 +254,7 @@ class AuthServiceRbacConsentSessionTest {
                     .isInstanceOf(DuplicateResourceException.class);
         }
 
-        @Test
-        @DisplayName("[TC-AUTH-047] ❌ Assign role to non-existent user")
+        @Test @DisplayName("[TC-AUTH-047] ❌ Assign role to non-existent user")
         void assign_UserNotFound() {
             UserRoleAssignRequest req = new UserRoleAssignRequest();
             req.setRoleId(roleId);
@@ -272,8 +264,7 @@ class AuthServiceRbacConsentSessionTest {
                     .isInstanceOf(ResourceNotFoundException.class);
         }
 
-        @Test
-        @DisplayName("[TC-AUTH-048] ❌ Assign non-existent role to user")
+        @Test @DisplayName("[TC-AUTH-048] ❌ Assign non-existent role to user")
         void assign_RoleNotFound() {
             UserRoleAssignRequest req = new UserRoleAssignRequest();
             req.setRoleId(UUID.randomUUID());
@@ -284,16 +275,14 @@ class AuthServiceRbacConsentSessionTest {
                     .isInstanceOf(ResourceNotFoundException.class);
         }
 
-        @Test
-        @DisplayName("[TC-AUTH-049] ✅ Revoke role from user")
+        @Test @DisplayName("[TC-AUTH-049] ✅ Revoke role from user")
         void revoke_Success() {
             when(repo.existsByUserIdAndRoleId(userId, roleId)).thenReturn(true);
             service.revoke(userId, roleId);
             verify(repo).deleteByUserIdAndRoleId(userId, roleId);
         }
 
-        @Test
-        @DisplayName("[TC-AUTH-050] ❌ Revoke non-existent role assignment")
+        @Test @DisplayName("[TC-AUTH-050] ❌ Revoke non-existent role assignment")
         void revoke_NotFound() {
             when(repo.existsByUserIdAndRoleId(any(), any())).thenReturn(false);
             assertThatThrownBy(() -> service.revoke(userId, roleId)).isInstanceOf(ResourceNotFoundException.class);
@@ -320,8 +309,7 @@ class AuthServiceRbacConsentSessionTest {
             user.setId(userId);
         }
 
-        @Test
-        @DisplayName("[TC-AUTH-051] ✅ Grant GDPR consent")
+        @Test @DisplayName("[TC-AUTH-051] ✅ Grant GDPR consent")
         void grant_Success() {
             ConsentRequest req = new ConsentRequest();
             req.setConsentType("GDPR"); req.setVersion("2.0");
@@ -339,8 +327,7 @@ class AuthServiceRbacConsentSessionTest {
             assertThat(resp.getVersion()).isEqualTo("2.0");
         }
 
-        @Test
-        @DisplayName("[TC-AUTH-052] ✅ Re-grant previously revoked consent")
+        @Test @DisplayName("[TC-AUTH-052] ✅ Re-grant previously revoked consent")
         void grant_ReGrant() {
             ConsentRequest req = new ConsentRequest();
             req.setConsentType("HIPAA");
@@ -353,12 +340,10 @@ class AuthServiceRbacConsentSessionTest {
             when(repo.findByUserIdAndConsentType(userId, ConsentType.HIPAA)).thenReturn(Optional.of(existing));
             when(repo.save(any())).thenReturn(existing);
 
-            ConsentRecordResponse resp = service.grant(userId, req, "new-ip");
-            assertThat(resp).isNotNull();
+            assertThat(service.grant(userId, req, "new-ip")).isNotNull();
         }
 
-        @Test
-        @DisplayName("[TC-AUTH-053] ❌ Grant consent for non-existent user")
+        @Test @DisplayName("[TC-AUTH-053] ❌ Grant consent for non-existent user")
         void grant_UserNotFound() {
             ConsentRequest req = new ConsentRequest();
             req.setConsentType("GDPR");
@@ -368,8 +353,7 @@ class AuthServiceRbacConsentSessionTest {
                     .isInstanceOf(ResourceNotFoundException.class);
         }
 
-        @Test
-        @DisplayName("[TC-AUTH-054] ❌ Grant consent with invalid type")
+        @Test @DisplayName("[TC-AUTH-054] ❌ Grant consent with invalid type")
         void grant_InvalidType() {
             ConsentRequest req = new ConsentRequest();
             req.setConsentType("INVALID");
@@ -379,8 +363,7 @@ class AuthServiceRbacConsentSessionTest {
                     .isInstanceOf(IllegalArgumentException.class);
         }
 
-        @Test
-        @DisplayName("[TC-AUTH-055] ✅ Revoke consent")
+        @Test @DisplayName("[TC-AUTH-055] ✅ Revoke consent")
         void revoke_Success() {
             ConsentRecord cr = ConsentRecord.builder().user(user).consentType(ConsentType.MARKETING)
                     .ipAddress("ip").version("1.0").build();
@@ -388,13 +371,11 @@ class AuthServiceRbacConsentSessionTest {
             when(repo.findByUserIdAndConsentType(userId, ConsentType.MARKETING)).thenReturn(Optional.of(cr));
             when(repo.save(any())).thenReturn(cr);
 
-            ConsentRecordResponse resp = service.revoke(userId, "MARKETING");
-            assertThat(resp).isNotNull();
+            assertThat(service.revoke(userId, "MARKETING")).isNotNull();
             verify(repo).save(any());
         }
 
-        @Test
-        @DisplayName("[TC-AUTH-056] ❌ Revoke non-existent consent")
+        @Test @DisplayName("[TC-AUTH-056] ❌ Revoke non-existent consent")
         void revoke_NotFound() {
             when(repo.findByUserIdAndConsentType(any(), any())).thenReturn(Optional.empty());
 
@@ -402,20 +383,17 @@ class AuthServiceRbacConsentSessionTest {
                     .isInstanceOf(ResourceNotFoundException.class);
         }
 
-        @Test
-        @DisplayName("[TC-AUTH-057] ✅ Get all consent records for user")
+        @Test @DisplayName("[TC-AUTH-057] ✅ Get all consent records for user")
         void getByUserId_Success() {
             ConsentRecord cr = ConsentRecord.builder().user(user).consentType(ConsentType.GDPR)
                     .ipAddress("ip").version("1.0").build();
             cr.setId(UUID.randomUUID());
             when(repo.findByUserId(userId)).thenReturn(List.of(cr));
 
-            List<ConsentRecordResponse> result = service.getByUserId(userId);
-            assertThat(result).hasSize(1);
+            assertThat(service.getByUserId(userId)).hasSize(1);
         }
 
-        @Test
-        @DisplayName("[TC-AUTH-058] ✅ Get consent records returns empty for user with no consents")
+        @Test @DisplayName("[TC-AUTH-058] ✅ Get consent records returns empty for user with no consents")
         void getByUserId_Empty() {
             when(repo.findByUserId(userId)).thenReturn(List.of());
             assertThat(service.getByUserId(userId)).isEmpty();
@@ -433,11 +411,23 @@ class AuthServiceRbacConsentSessionTest {
         @Mock private UserSessionRepository sessionRepo;
         @Mock private RefreshTokenRepository refreshTokenRepo;
 
-        private final UUID userId = UUID.randomUUID();
+        private final UUID userId    = UUID.randomUUID();
         private final UUID sessionId = UUID.randomUUID();
 
-        @Test
-        @DisplayName("[TC-AUTH-059] ✅ Get active sessions for user")
+        // helper — creates a UserSession owned by userId
+        private UserSession ownedSession() {
+            User owner = User.builder()
+                    .email("owner@biolab.com").passwordHash("h")
+                    .firstName("A").lastName("B").build();
+            owner.setId(userId);
+
+            UserSession s = UserSession.builder()
+                    .user(owner).isActive(true).build();
+            s.setId(sessionId);
+            return s;
+        }
+
+        @Test @DisplayName("[TC-AUTH-059] ✅ Get active sessions for user")
         void getActiveSessions_Success() {
             UserSession session = UserSession.builder()
                     .ipAddress("10.0.0.1").userAgent("Chrome").isActive(true)
@@ -451,21 +441,20 @@ class AuthServiceRbacConsentSessionTest {
             assertThat(result.get(0).getIpAddress()).isEqualTo("10.0.0.1");
         }
 
-        @Test
-        @DisplayName("[TC-AUTH-060] ✅ Get active sessions returns empty when no sessions")
+        @Test @DisplayName("[TC-AUTH-060] ✅ Get active sessions returns empty when no sessions")
         void getActiveSessions_Empty() {
             when(sessionRepo.findByUserIdAndIsActiveTrue(userId)).thenReturn(List.of());
             assertThat(service.getActiveSessions(userId)).isEmpty();
         }
 
         @Test
-        @DisplayName("[TC-AUTH-061] ✅ Terminate specific session")
+        @DisplayName("[TC-AUTH-061] ✅ Terminate specific session — FIX-17 two-arg signature")
         void terminateSession_Success() {
-            UserSession session = UserSession.builder().isActive(true).build();
-            session.setId(sessionId);
-            when(sessionRepo.findById(sessionId)).thenReturn(Optional.of(session));
+            // FIX-17: session must have user set so ownership check passes
+            when(sessionRepo.findById(sessionId)).thenReturn(Optional.of(ownedSession()));
 
-            service.terminateSession(sessionId);
+            // FIX-17: two-arg call — userId + sessionId
+            service.terminateSession(userId, sessionId);
 
             ArgumentCaptor<UserSession> captor = ArgumentCaptor.forClass(UserSession.class);
             verify(sessionRepo).save(captor.capture());
@@ -473,25 +462,50 @@ class AuthServiceRbacConsentSessionTest {
         }
 
         @Test
-        @DisplayName("[TC-AUTH-062] ❌ Terminate non-existent session")
+        @DisplayName("[TC-AUTH-062] ❌ Terminate non-existent session — FIX-17")
         void terminateSession_NotFound() {
             when(sessionRepo.findById(any())).thenReturn(Optional.empty());
-            assertThatThrownBy(() -> service.terminateSession(UUID.randomUUID()))
+
+            // FIX-17: two-arg call
+            assertThatThrownBy(() -> service.terminateSession(userId, UUID.randomUUID()))
                     .isInstanceOf(ResourceNotFoundException.class);
         }
 
         @Test
-        @DisplayName("[TC-AUTH-063] ✅ Force logout revokes tokens and sessions")
-        void forceLogout_Success() {
-            when(refreshTokenRepo.revokeAllByUserIdWithReason(eq(userId), any(RevokedReason.class), any(Instant.class))).thenReturn(3);
-            when(sessionRepo.deactivateAllUserSessions(userId)).thenReturn(2);
+        @DisplayName("[TC-AUTH-NEW] ❌ Terminate session owned by different user is rejected — FIX-17")
+        void terminateSession_OwnershipViolation() {
+            // Session belongs to a different user
+            UUID otherUserId = UUID.randomUUID();
+            User otherUser = User.builder()
+                    .email("other@biolab.com").passwordHash("h")
+                    .firstName("X").lastName("Y").build();
+            otherUser.setId(otherUserId);
 
-            int total = service.forceLogoutUser(userId);
-            assertThat(total).isEqualTo(5);
+            UserSession otherSession = UserSession.builder()
+                    .user(otherUser).isActive(true).build();
+            otherSession.setId(sessionId);
+
+            when(sessionRepo.findById(sessionId)).thenReturn(Optional.of(otherSession));
+
+            // userId tries to terminate otherUserId's session — must be rejected
+            assertThatThrownBy(() -> service.terminateSession(userId, sessionId))
+                    .isInstanceOf(AuthException.class)
+                    .extracting(e -> ((AuthException) e).getStatus())
+                    .isEqualTo(HttpStatus.FORBIDDEN);
+
+            verify(sessionRepo, never()).save(any());
         }
 
-        @Test
-        @DisplayName("[TC-AUTH-064] ✅ Get session stats returns counts")
+        @Test @DisplayName("[TC-AUTH-063] ✅ Force logout revokes tokens and sessions")
+        void forceLogout_Success() {
+            when(refreshTokenRepo.revokeAllByUserIdWithReason(
+                    eq(userId), any(RevokedReason.class), any(Instant.class))).thenReturn(3);
+            when(sessionRepo.deactivateAllUserSessions(userId)).thenReturn(2);
+
+            assertThat(service.forceLogoutUser(userId)).isEqualTo(5);
+        }
+
+        @Test @DisplayName("[TC-AUTH-064] ✅ Get session stats returns counts")
         void getSessionStats_Success() {
             when(sessionRepo.countByIsActiveTrue()).thenReturn(42L);
             when(refreshTokenRepo.countActiveTokens(any())).thenReturn(100L);
@@ -499,13 +513,12 @@ class AuthServiceRbacConsentSessionTest {
             when(sessionRepo.countByCreatedAtAfter(any())).thenReturn(10L);
 
             Map<String, Object> stats = service.getSessionStats();
-            assertThat(stats).containsEntry("activeSessions", 42L);
-            assertThat(stats).containsEntry("activeRefreshTokens", 100L);
+            assertThat(stats).containsEntry("activeSessions",          42L);
+            assertThat(stats).containsEntry("activeRefreshTokens",     100L);
             assertThat(stats).containsEntry("uniqueUsersWithSessions", 25L);
         }
 
-        @Test
-        @DisplayName("[TC-AUTH-065] ✅ Terminate all sessions for user")
+        @Test @DisplayName("[TC-AUTH-065] ✅ Terminate all sessions for user")
         void terminateAllSessions_Success() {
             service.terminateAllSessions(userId);
             verify(sessionRepo).deactivateAllUserSessions(userId);

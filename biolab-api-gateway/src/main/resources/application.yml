@@ -1,6 +1,20 @@
 # ════════════════════════════════════════════════════════════════════════
-# BioLab API Gateway — Spring Cloud Gateway (Reactive / WebFlux)
-# Port: 8080 | Central entry point for all client requests
+# BioLab API Gateway — application.yml
+#
+# SECURITY POSTURE BY PROFILE
+# ─────────────────────────────────────────────────────────────────────
+# default (local dev): safe fallbacks allow the gateway to start without
+#   any environment variables set. Useful for IDE / mvn spring-boot:run.
+#
+# prod: ALL fallbacks removed. The gateway fails fast at startup if any
+#   required secret is missing. Activate with:
+#   SPRING_PROFILES_ACTIVE=prod
+#
+# KEY VARIABLES
+# ─────────────────────────────────────────────────────────────────────
+# JWT_SECRET             openssl rand -base64 32
+# GATEWAY_INTERNAL_TOKEN openssl rand -base64 32
+# REDIS_PASSWORD         openssl rand -base64 16
 # ════════════════════════════════════════════════════════════════════════
 
 server:
@@ -15,69 +29,73 @@ spring:
   lifecycle:
     timeout-per-shutdown-phase: 30s
 
-  # ─── Config Client — fetch from Config Server (optional) ────────────
   config:
     import: optional:configserver:http://${CONFIG_HOST:localhost}:${CONFIG_PORT:8888}
 
-  # ─── Redis — rate limiting backend ──────────────────────────────────
   data:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
       timeout: 3000
       lettuce:
         pool:
           max-active: 20
           max-idle: 10
 
-  # ─── Gateway Configuration (Spring Cloud 2025.0.x property names) ──
   cloud:
     gateway:
       server:
         webflux:
-          # Trust proxies for X-Forwarded-* header handling
           trusted-proxies: ".*"
-
-          # Service discovery-based routing
           discovery:
             locator:
               enabled: true
               lower-case-service-id: true
-
-          # Global timeouts
           httpclient:
             connect-timeout: 5000
             response-timeout: 10s
-
-          # Default filters applied to ALL routes
           default-filters:
             - name: RequestSize
               args:
                 maxSize: 100MB
 
-# ─── JWT Configuration ────────────────────────────────────────────────
+# ─── App configuration (default / local-dev profile) ─────────────────
 app:
   jwt:
-    secret: ${JWT_SECRET:BioLabSecretKeyForJWTSigningMustBeAtLeast256BitsLong2026!}
+    # GAP-01: Sprint 0 removed the hardcoded default from source control.
+    # For local dev without .env, provide a safe non-production fallback here.
+    # In production use SPRING_PROFILES_ACTIVE=prod — that profile has NO fallback.
+    secret: ${JWT_SECRET:LocalDevSecretKey-Replace-Before-Any-Deployment-32chars!}
     issuer: biolab-auth-service
+    refresh-token-expiration-ms: 604800000
+    refresh-token-cookie-name: ${RT_COOKIE_NAME:biolab_rt}
 
-  # ─── CORS ───────────────────────────────────────────────────────────
+  gateway:
+    # Empty default — GatewayTokenFilter skips the header when blank (local dev safe).
+    # Production: set GATEWAY_INTERNAL_TOKEN via env or secrets manager.
+    internal-token: ${GATEWAY_INTERNAL_TOKEN:}
+
   cors:
     allowed-origins: ${CORS_ORIGINS:http://localhost:3000,http://localhost:5173}
     allowed-methods: GET,POST,PUT,PATCH,DELETE,OPTIONS
-    allowed-headers: "*"
+    # Sprint 2 GAP-14: explicit list — no wildcard
+    allowed-headers: "Content-Type,Authorization,X-Request-ID,Accept,Cache-Control"
     allow-credentials: true
     max-age: 3600
 
-  # ─── Rate Limiting ─────────────────────────────────────────────────
   rate-limit:
     default-replenish-rate: 20
     default-burst-capacity: 40
+    mfa-replenish-rate: 1
+    mfa-burst-capacity: 5
 
-# ─── Eureka Client ────────────────────────────────────────────────────
+# ─── Eureka ───────────────────────────────────────────────────────────
 eureka:
   instance:
-    prefer-ip-address: true
+    prefer-ip-address: false
+    hostname: localhost
+    ip-address: 127.0.0.1
     metadata-map:
       zone: primary
       version: 1.0.0
@@ -87,7 +105,7 @@ eureka:
     register-with-eureka: true
     fetch-registry: true
 
-# ─── Resilience4j Circuit Breaker ─────────────────────────────────────
+# ─── Resilience4j ─────────────────────────────────────────────────────
 resilience4j:
   circuitbreaker:
     configs:
@@ -97,7 +115,6 @@ resilience4j:
         wait-duration-in-open-state: 10s
         permitted-number-of-calls-in-half-open-state: 5
     instances:
-      # Auth gets its own CB config — BCrypt + DB on password endpoints is slow
       authServiceCB:
         sliding-window-size: 10
         failure-rate-threshold: 60
@@ -125,9 +142,6 @@ resilience4j:
       default:
         timeout-duration: 4s
     instances:
-      # Auth service timeout raised to 15s — BCrypt cost=12 + DB + async email = 5-8s
-      # The previous 4s timeout caused every reset-password call to be counted as a
-      # failure, tripping the circuit breaker open and returning 503 on healthy requests.
       authServiceCB:
         timeout-duration: 15s
 
@@ -145,7 +159,7 @@ management:
     gateway:
       access: unrestricted
 
-# ─── Swagger / OpenAPI ────────────────────────────────────────────────
+# ─── Swagger ──────────────────────────────────────────────────────────
 springdoc:
   api-docs:
     path: /v3/api-docs
@@ -164,7 +178,11 @@ logging:
     console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level [%logger{36}] - %msg%n"
 
 ---
+# ════════════════════════════════════════════════════════════════════════
 # Profile: prod
+# ALL fallbacks removed — gateway refuses to start if any secret is missing.
+# Activate: SPRING_PROFILES_ACTIVE=prod
+# ════════════════════════════════════════════════════════════════════════
 spring:
   config:
     activate:
@@ -173,7 +191,6 @@ spring:
     gateway:
       server:
         webflux:
-          # In production, restrict to your actual proxy/load balancer IPs
           trusted-proxies: "${TRUSTED_PROXY_PATTERN:10\\.0\\.0\\..*}"
 
 logging:
@@ -182,8 +199,51 @@ logging:
     com.biolab.gateway: INFO
     org.springframework.cloud.gateway: WARN
 
-# ─── ELK Stack Logging ────────────────────────────────────────────────
 app:
+  jwt:
+    # NO fallback in prod — fails fast if JWT_SECRET is unset
+    secret: ${JWT_SECRET}
+    issuer: biolab-auth-service
+
+  gateway:
+    # NO fallback in prod — fails fast if GATEWAY_INTERNAL_TOKEN is unset
+    internal-token: ${GATEWAY_INTERNAL_TOKEN}
+
   elk:
     logstash-host: ${LOGSTASH_HOST:logstash}
     logstash-port: ${LOGSTASH_PORT:5000}
+
+---
+# ════════════════════════════════════════════════════════════════════════
+# Profile: local
+# For running WITHOUT Docker — no Redis, Eureka registers but doesn't block startup.
+# Activate: add VM option  -Dspring.profiles.active=local
+# OR set env variable:     SPRING_PROFILES_ACTIVE=local
+# ════════════════════════════════════════════════════════════════════════
+spring:
+  config:
+    activate:
+      on-profile: local
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      password:
+
+eureka:
+  client:
+    # Still register with Eureka so gateway can discover services
+    register-with-eureka: true
+    fetch-registry: true
+    # Don't fail startup if Eureka is temporarily unavailable
+    service-url:
+      defaultZone: http://admin:admin@localhost:8761/eureka/
+
+management:
+  health:
+    redis:
+      enabled: false   # Don't fail health check if Redis is not running locally
+
+app:
+  rate-limit:
+    enabled: false     # Disable Redis-based rate limiting when running without Redis

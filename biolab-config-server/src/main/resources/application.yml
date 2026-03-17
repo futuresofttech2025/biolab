@@ -28,6 +28,9 @@ spring:
 
 # ─── Custom App Properties ────────────────────────────────────────────
 app:
+  jwt:
+    secret: ${JWT_SECRET:BioLabSecretKeyForJWTSigningMustBeAtLeast256BitsLong2026!}
+
   config:
     username: ${APP_CONFIG_USERNAME:configuser}
     password: ${APP_CONFIG_PASSWORD:configpass}

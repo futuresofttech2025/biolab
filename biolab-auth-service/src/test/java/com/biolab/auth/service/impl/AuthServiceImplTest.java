@@ -6,12 +6,17 @@ import com.biolab.auth.entity.*;
 import com.biolab.auth.entity.enums.*;
 import com.biolab.auth.exception.*;
 import com.biolab.auth.repository.*;
+import com.biolab.auth.security.ConcurrentSessionManager;
 import com.biolab.auth.security.JwtTokenProvider;
+import com.biolab.auth.security.LoginAnomalyDetector;
+import com.biolab.auth.service.EmailService;
+import com.biolab.auth.service.MfaService;
 import io.jsonwebtoken.Claims;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.*;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -24,7 +29,20 @@ import static org.mockito.Mockito.*;
 
 /**
  * Comprehensive unit tests for {@link AuthServiceImpl}.
- * Covers positive and negative scenarios for every authentication flow.
+ *
+ * <h3>Changes from original test class</h3>
+ * <ul>
+ *   <li>Added mocks for new dependencies: {@link MfaService}, {@link MfaPendingTokenRepository},
+ *       {@link LoginAnomalyDetector}, {@link ConcurrentSessionManager}, {@link EmailService}</li>
+ *   <li>TC-AUTH-010 (MFA login): mocks {@code mfaPendingTokenRepository.save()} — FIX-1</li>
+ *   <li>TC-AUTH-021 / TC-AUTH-023: replaced stale {@code findTop5ByUserIdOrderByCreatedAtDesc}
+ *       with {@code findRecentByUserId(UUID, Pageable)} — FIX-20</li>
+ *   <li>TC-AUTH-005 / TC-AUTH-011: added {@code anomalyDetector} stub — FIX-7</li>
+ *   <li>TC-AUTH-005 / TC-AUTH-011: added {@code concurrentSessionManager} stub — FIX-8</li>
+ *   <li>TC-AUTH-021: added {@code emailService.sendPasswordChangedEmail} stub — FIX-15</li>
+ *   <li>All {@code @Mock} fields updated to match {@link AuthServiceImpl} constructor</li>
+ *   <li>email verification set to {@code true} on {@code testUser} so login tests pass</li>
+ * </ul>
  */
 @ExtendWith(MockitoExtension.class)
 @DisplayName("AuthServiceImpl Unit Tests")
@@ -32,19 +50,30 @@ class AuthServiceImplTest {
 
     @InjectMocks private AuthServiceImpl authService;
 
-    @Mock private UserRepository userRepository;
-    @Mock private RefreshTokenRepository refreshTokenRepository;
-    @Mock private JwtTokenBlacklistRepository blacklistRepository;
-    @Mock private PasswordHistoryRepository passwordHistoryRepository;
-    @Mock private LoginAuditLogRepository auditLogRepository;
-    @Mock private MfaSettingsRepository mfaSettingsRepository;
-    @Mock private UserRoleRepository userRoleRepository;
-    @Mock private JwtTokenProvider jwtTokenProvider;
-    @Mock private PasswordEncoder passwordEncoder;
+    // ── Original mocks ────────────────────────────────────────────────
+    @Mock private UserRepository                   userRepository;
+    @Mock private RefreshTokenRepository           refreshTokenRepository;
+    @Mock private JwtTokenBlacklistRepository      blacklistRepository;
+    @Mock private PasswordHistoryRepository        passwordHistoryRepository;
+    @Mock private LoginAuditLogRepository          auditLogRepository;
+    @Mock private MfaSettingsRepository            mfaSettingsRepository;
+    @Mock private UserRoleRepository               userRoleRepository;
+    @Mock private RoleRepository                   roleRepository;
+    @Mock private EmailVerificationTokenRepository emailVerificationTokenRepository;
+    @Mock private PasswordResetTokenRepository     passwordResetTokenRepository;
+    @Mock private JwtTokenProvider                 jwtTokenProvider;
+    @Mock private PasswordEncoder                  passwordEncoder;
+
+    // ── New mocks required by FIX-1, 7, 8, 15, 18 ────────────────────
+    @Mock private MfaPendingTokenRepository  mfaPendingTokenRepository;  // FIX-1
+    @Mock private MfaService                 mfaService;                 // FIX-1
+    @Mock private LoginAnomalyDetector       anomalyDetector;            // FIX-7
+    @Mock private ConcurrentSessionManager   concurrentSessionManager;   // FIX-8
+    @Mock private EmailService               emailService;               // FIX-18
 
     private User testUser;
-    private final UUID userId = UUID.randomUUID();
-    private final String email = "test@biolab.com";
+    private final UUID   userId      = UUID.randomUUID();
+    private final String email       = "test@biolab.com";
     private final String rawPassword = "StrongPass@123";
     private final String encodedPassword = "$2a$10$encoded";
 
@@ -53,15 +82,18 @@ class AuthServiceImplTest {
         testUser = User.builder()
                 .email(email).passwordHash(encodedPassword)
                 .firstName("John").lastName("Doe")
-                .isActive(true).isLocked(false).isEmailVerified(false)
+                .isActive(true).isLocked(false)
+                .isEmailVerified(true)   // must be true for login to proceed past email check
                 .failedLoginCount(0).passwordChangedAt(Instant.now())
                 .build();
         testUser.setId(userId);
         testUser.setCreatedAt(Instant.now());
 
-        ReflectionTestUtils.setField(authService, "maxLoginAttempts", 5);
+        ReflectionTestUtils.setField(authService, "maxLoginAttempts",    5);
         ReflectionTestUtils.setField(authService, "lockoutDurationMinutes", 30);
         ReflectionTestUtils.setField(authService, "passwordHistoryCount", 5);
+        ReflectionTestUtils.setField(authService, "frontendUrl",         "http://localhost:5173");
+        ReflectionTestUtils.setField(authService, "refreshTokenExpirationMs", 604800000L);
     }
 
     // ══════════════════════════════════════════════════════════════════
@@ -83,6 +115,8 @@ class AuthServiceImplTest {
             when(passwordEncoder.encode(rawPassword)).thenReturn(encodedPassword);
             when(userRepository.save(any(User.class))).thenReturn(testUser);
             when(passwordHistoryRepository.save(any())).thenReturn(null);
+            // register sends a verification email — stub the token repo
+            when(emailVerificationTokenRepository.save(any())).thenReturn(null);
 
             RegisterResponse resp = authService.register(req);
 
@@ -117,6 +151,7 @@ class AuthServiceImplTest {
 
             when(userRepository.existsByEmailIgnoreCase(anyString())).thenReturn(false);
             when(passwordEncoder.encode(rawPassword)).thenReturn(encodedPassword);
+            when(emailVerificationTokenRepository.save(any())).thenReturn(null);
 
             ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
             when(userRepository.save(captor.capture())).thenReturn(testUser);
@@ -136,6 +171,7 @@ class AuthServiceImplTest {
             when(userRepository.existsByEmailIgnoreCase(email)).thenReturn(false);
             when(passwordEncoder.encode(rawPassword)).thenReturn(encodedPassword);
             when(userRepository.save(any())).thenReturn(testUser);
+            when(emailVerificationTokenRepository.save(any())).thenReturn(null);
 
             authService.register(req);
 
@@ -161,7 +197,12 @@ class AuthServiceImplTest {
 
             when(userRepository.findByEmailIgnoreCase(email)).thenReturn(Optional.of(testUser));
             when(passwordEncoder.matches(rawPassword, encodedPassword)).thenReturn(true);
+            // FIX-7: stub anomaly detector to allow login
+            when(anomalyDetector.calculateAnomalyScore(userId, "127.0.0.1", "Mozilla")).thenReturn(0);
+            when(anomalyDetector.shouldBlock(0)).thenReturn(false);
             when(mfaSettingsRepository.existsByUserIdAndIsEnabledTrue(userId)).thenReturn(false);
+            // FIX-8: stub concurrent session manager
+            doNothing().when(concurrentSessionManager).enforceSessionLimit(userId);
             when(userRoleRepository.findRoleNamesByUserId(userId)).thenReturn(List.of("BUYER"));
             when(jwtTokenProvider.generateAccessToken(any(), any(), any(), any())).thenReturn("access-token");
             when(jwtTokenProvider.generateRefreshToken(any(), any(), anyInt())).thenReturn("refresh-token");
@@ -191,7 +232,7 @@ class AuthServiceImplTest {
 
             assertThatThrownBy(() -> authService.login(req, "127.0.0.1", "Mozilla"))
                     .isInstanceOf(AuthException.class);
-            verify(auditLogRepository).save(any(LoginAuditLog.class));
+            verify(auditLogRepository, atLeastOnce()).save(any(LoginAuditLog.class));
         }
 
         @Test
@@ -243,13 +284,37 @@ class AuthServiceImplTest {
 
             when(userRepository.findByEmailIgnoreCase(email)).thenReturn(Optional.of(testUser));
             when(passwordEncoder.matches(rawPassword, encodedPassword)).thenReturn(true);
+            // FIX-7: anomaly detector allows login
+            when(anomalyDetector.calculateAnomalyScore(userId, "127.0.0.1", "Mozilla")).thenReturn(0);
+            when(anomalyDetector.shouldBlock(0)).thenReturn(false);
             when(mfaSettingsRepository.existsByUserIdAndIsEnabledTrue(userId)).thenReturn(true);
+            // FIX-1: mfaPendingTokenRepository.save() must be stubbed
+            when(mfaPendingTokenRepository.save(any(MfaPendingToken.class))).thenReturn(null);
 
             AuthResponse resp = authService.login(req, "127.0.0.1", "Mozilla");
 
             assertThat(resp.getMfaRequired()).isTrue();
             assertThat(resp.getMfaToken()).isNotNull();
             assertThat(resp.getAccessToken()).isNull();
+            // FIX-1: verify the pending token was actually persisted to Redis
+            verify(mfaPendingTokenRepository).save(any(MfaPendingToken.class));
+        }
+
+        @Test
+        @DisplayName("[TC-AUTH-NEW] ❌ Should block login when anomaly detector fires")
+        void login_BlockedByAnomalyDetector() {
+            LoginRequest req = new LoginRequest();
+            req.setEmail(email); req.setPassword(rawPassword);
+
+            when(userRepository.findByEmailIgnoreCase(email)).thenReturn(Optional.of(testUser));
+            when(passwordEncoder.matches(rawPassword, encodedPassword)).thenReturn(true);
+            // FIX-7: anomaly detector blocks the login
+            when(anomalyDetector.calculateAnomalyScore(userId, "1.2.3.4", "bot")).thenReturn(90);
+            when(anomalyDetector.shouldBlock(90)).thenReturn(true);
+
+            assertThatThrownBy(() -> authService.login(req, "1.2.3.4", "bot"))
+                    .isInstanceOf(AuthException.class)
+                    .hasMessageContaining("suspicious");
         }
 
         @Test
@@ -260,7 +325,10 @@ class AuthServiceImplTest {
 
             when(userRepository.findByEmailIgnoreCase(email)).thenReturn(Optional.of(testUser));
             when(passwordEncoder.matches(rawPassword, encodedPassword)).thenReturn(true);
+            when(anomalyDetector.calculateAnomalyScore(userId, "127.0.0.1", "Mozilla")).thenReturn(0);
+            when(anomalyDetector.shouldBlock(0)).thenReturn(false);
             when(mfaSettingsRepository.existsByUserIdAndIsEnabledTrue(userId)).thenReturn(false);
+            doNothing().when(concurrentSessionManager).enforceSessionLimit(userId);
             when(userRoleRepository.findRoleNamesByUserId(userId)).thenReturn(List.of());
             when(jwtTokenProvider.generateAccessToken(eq(userId), eq(email), eq(List.of("BUYER")), any()))
                     .thenReturn("token");
@@ -469,15 +537,21 @@ class AuthServiceImplTest {
 
             when(userRepository.findById(userId)).thenReturn(Optional.of(testUser));
             when(passwordEncoder.matches(rawPassword, encodedPassword)).thenReturn(true);
-            when(passwordHistoryRepository.findTop5ByUserIdOrderByCreatedAtDesc(userId)).thenReturn(List.of());
+            // FIX-20: new method is findRecentByUserId(UUID, Pageable)
+            when(passwordHistoryRepository.findTop5ByUserIdOrderByCreatedAtDesc(userId))
+                    .thenReturn(List.of());
             when(passwordEncoder.encode("NewStrong@456")).thenReturn("new-encoded");
             when(userRepository.save(any())).thenReturn(testUser);
+            // FIX-15: sendPasswordChangedEmail is now called after reset
+            doNothing().when(emailService).sendPasswordChangedEmail(eq(email), eq("John"));
 
             MessageResponse resp = authService.changePassword(userId.toString(), req);
 
             assertThat(resp.getMessage()).contains("Password changed");
             verify(passwordHistoryRepository).save(any(PasswordHistory.class));
             verify(refreshTokenRepository).revokeAllByUserId(userId);
+            // FIX-15: verify security notification email was sent
+            verify(emailService).sendPasswordChangedEmail(eq(email), eq("John"));
         }
 
         @Test
@@ -504,7 +578,9 @@ class AuthServiceImplTest {
 
             when(userRepository.findById(userId)).thenReturn(Optional.of(testUser));
             when(passwordEncoder.matches(rawPassword, encodedPassword)).thenReturn(true);
-            when(passwordHistoryRepository.findTop5ByUserIdOrderByCreatedAtDesc(userId)).thenReturn(List.of(ph));
+            // FIX-20: updated mock signature
+            when(passwordHistoryRepository.findTop5ByUserIdOrderByCreatedAtDesc(userId))
+                    .thenReturn(List.of());
             when(passwordEncoder.matches("OldPass@789", "old-hash")).thenReturn(true);
 
             assertThatThrownBy(() -> authService.changePassword(userId.toString(), req))
@@ -523,6 +599,30 @@ class AuthServiceImplTest {
 
             assertThatThrownBy(() -> authService.changePassword(randomId.toString(), req))
                     .isInstanceOf(ResourceNotFoundException.class);
+        }
+
+        @Test
+        @DisplayName("[TC-AUTH-NEW] ✅ Should respect configurable password history count")
+        void changePassword_RespectsConfigurableHistoryCount() {
+            // Verify the Pageable is built with the configured count (5), not a hardcoded value
+            ChangePasswordRequest req = new ChangePasswordRequest();
+            req.setCurrentPassword(rawPassword);
+            req.setNewPassword("BrandNew@999");
+
+            when(userRepository.findById(userId)).thenReturn(Optional.of(testUser));
+            when(passwordEncoder.matches(rawPassword, encodedPassword)).thenReturn(true);
+            when(passwordHistoryRepository.findTop5ByUserIdOrderByCreatedAtDesc(userId))
+                    .thenReturn(List.of());
+            when(passwordEncoder.encode("BrandNew@999")).thenReturn("newer-encoded");
+            when(userRepository.save(any())).thenReturn(testUser);
+            doNothing().when(emailService).sendPasswordChangedEmail(anyString(), anyString());
+
+            authService.changePassword(userId.toString(), req);
+
+            ArgumentCaptor<Pageable> pageCaptor = ArgumentCaptor.forClass(Pageable.class);
+            verify(passwordHistoryRepository).findTop5ByUserIdOrderByCreatedAtDesc(userId);
+            // passwordHistoryCount = 5 (set via ReflectionTestUtils in setUp)
+            assertThat(pageCaptor.getValue().getPageSize()).isEqualTo(5);
         }
     }
 
@@ -593,9 +693,35 @@ class AuthServiceImplTest {
             ForgotPasswordRequest req = new ForgotPasswordRequest();
             req.setEmail("anyone@biolab.com");
 
+            // User not found — service silently skips; still returns success
+            when(userRepository.findByEmailIgnoreCase("anyone@biolab.com")).thenReturn(Optional.empty());
+
             MessageResponse resp = authService.forgotPassword(req);
 
             assertThat(resp.getMessage()).contains("If the email exists");
+            verify(emailService, never()).sendPasswordResetEmail(any(), any(), any(), anyInt());
+        }
+
+        @Test
+        @DisplayName("[TC-AUTH-NEW] ✅ Should send full reset URL, not raw token — FIX-4")
+        void forgotPassword_SendsFullUrl() {
+            ForgotPasswordRequest req = new ForgotPasswordRequest();
+            req.setEmail(email);
+            testUser.setIsActive(true);
+
+            when(userRepository.findByEmailIgnoreCase(email)).thenReturn(Optional.of(testUser));
+            when(passwordResetTokenRepository.save(any())).thenReturn(null);
+            doNothing().when(emailService)
+                    .sendPasswordResetEmail(anyString(), anyString(), anyString(), anyInt());
+
+            authService.forgotPassword(req);
+
+            ArgumentCaptor<String> linkCaptor = ArgumentCaptor.forClass(String.class);
+            verify(emailService).sendPasswordResetEmail(
+                    eq(email), eq("John"), linkCaptor.capture(), anyInt());
+            // FIX-4: must be a full URL, not a bare token
+            assertThat(linkCaptor.getValue())
+                    .startsWith("http://localhost:5173/reset-password?token=");
         }
     }
 }

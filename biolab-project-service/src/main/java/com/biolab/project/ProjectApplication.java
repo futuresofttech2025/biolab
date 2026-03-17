@@ -7,7 +7,14 @@ import org.springframework.context.annotation.ComponentScan;
 import java.util.TimeZone;
 
 @SpringBootApplication
-@ComponentScan(basePackages = {"com.biolab.project", "com.biolab.common"})
+@ComponentScan(basePackages = {
+        "com.biolab.project",
+        "com.biolab.common.encryption",
+        "com.biolab.common.security",
+        "com.biolab.common.logging",
+        "com.biolab.common.rls",
+        "com.biolab.common.audit"
+})
 public class ProjectApplication {
     public static void main(String[] args) {
         TimeZone.setDefault(TimeZone.getTimeZone("Asia/Kolkata"));

@@ -16,8 +16,11 @@ import org.springframework.web.bind.annotation.*;
 import java.util.*;
 
 @RestController
-@RequestMapping("/notifications")
-@Tag(name = "Notifications")
+@RequestMapping("/api/notifications")
+@Tag(name = "Notifications",
+        description = "Notification listing, read-marking and preference management. "
+                + "Base path fixed from /notifications to /api/notifications to align "
+                + "with the API Gateway route /api/notifications/** → BIOLAB-NOTIFICATION-SERVICE.")
 public class NotificationController {
 
     private final NotificationService service;

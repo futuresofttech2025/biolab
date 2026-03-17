@@ -21,13 +21,15 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Implementation of {@link UserProfileService} — manages user profile CRUD.
+ * Implementation of {@link UserProfileService}.
  *
- * <p>This service reads from both {@code sec_schema.users} and joins with
- * user_roles and user_organizations to build complete user profiles.</p>
+ * <h3>Sprint 2/3 — Email encryption changes</h3>
+ * <p>{@code user.getEmail()} now returns the HMAC-SHA256 hash (not displayable).
+ * All response objects must use {@code user.getEmailDisplay()} for the
+ * human-readable email address. The hash is only used for DB lookups.</p>
  *
  * @author BioLab Engineering Team
- * @version 1.0.0
+ * @version 2.0.0
  */
 @Service
 @RequiredArgsConstructor
@@ -35,9 +37,9 @@ import java.util.UUID;
 @Transactional
 public class UserProfileServiceImpl implements UserProfileService {
 
-    private final UserRepository userRepository;
-    private final UserRoleRepository userRoleRepository;
-    private final UserOrganizationRepository userOrgRepository;
+    private final UserRepository              userRepository;
+    private final UserRoleRepository          userRoleRepository;
+    private final UserOrganizationRepository  userOrgRepository;
 
     @Override
     @Transactional(readOnly = true)
@@ -47,6 +49,10 @@ public class UserProfileServiceImpl implements UserProfileService {
         return buildFullProfile(user);
     }
 
+    /**
+     * Sprint 2/3: lookup is by email hash — the converter handles the hashing.
+     * Response uses emailDisplay for the human-readable address.
+     */
     @Override
     @Transactional(readOnly = true)
     public UserProfileResponse getByEmail(String email) {
@@ -62,37 +68,21 @@ public class UserProfileServiceImpl implements UserProfileService {
         List<UserProfileResponse> content = page.getContent().stream()
                 .map(this::buildFullProfile)
                 .toList();
-
         return PageResponse.<UserProfileResponse>builder()
-                .content(content)
-                .page(page.getNumber())
-                .size(page.getSize())
-                .totalElements(page.getTotalElements())
-                .totalPages(page.getTotalPages())
-                .hasNext(page.hasNext())
-                .build();
+                .content(content).page(page.getNumber()).size(page.getSize())
+                .totalElements(page.getTotalElements()).totalPages(page.getTotalPages())
+                .hasNext(page.hasNext()).build();
     }
 
     @Override
     public UserProfileResponse update(UUID id, UserUpdateRequest request) {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User", "id", id));
-
-        // Apply partial update — only non-null fields
-        if (request.getFirstName() != null) {
-            user.setFirstName(request.getFirstName().trim());
-        }
-        if (request.getLastName() != null) {
-            user.setLastName(request.getLastName().trim());
-        }
-        if (request.getPhone() != null) {
-            user.setPhone(request.getPhone());
-        }
-        if (request.getAvatarUrl() != null) {
-            user.setAvatarUrl(request.getAvatarUrl());
-        }
+        if (request.getFirstName()  != null) user.setFirstName(request.getFirstName().trim());
+        if (request.getLastName()   != null) user.setLastName(request.getLastName().trim());
+        if (request.getPhone()      != null) user.setPhone(request.getPhone());
+        if (request.getAvatarUrl()  != null) user.setAvatarUrl(request.getAvatarUrl());
         user.setUpdatedAt(Instant.now());
-
         User saved = userRepository.save(user);
         log.info("User profile updated: {}", id);
         return buildFullProfile(saved);
@@ -105,7 +95,7 @@ public class UserProfileServiceImpl implements UserProfileService {
         user.setIsActive(false);
         user.setUpdatedAt(Instant.now());
         userRepository.save(user);
-        log.info("User deactivated (soft delete): {}", id);
+        log.info("User deactivated: {}", id);
     }
 
     @Override
@@ -114,29 +104,18 @@ public class UserProfileServiceImpl implements UserProfileService {
                 .orElseThrow(() -> new ResourceNotFoundException("User", "id", id));
         user.setIsActive(true);
         user.setUpdatedAt(Instant.now());
-        User saved = userRepository.save(user);
-        log.info("User reactivated: {}", id);
-        return buildFullProfile(saved);
+        return buildFullProfile(userRepository.save(user));
     }
 
-    // ─── Helper: Build full profile with roles and orgs ─────────────
+    // ─── Helper ──────────────────────────────────────────────────────────
 
-    /**
-     * Builds a complete user profile response with roles and organization memberships.
-     *
-     * @param user the User entity
-     * @return the fully populated UserProfileResponse
-     */
     private UserProfileResponse buildFullProfile(User user) {
-        // Fetch role names
         List<String> roles = userRoleRepository.findRoleNamesByUserId(user.getId());
-
-        // Fetch organization memberships
         List<UserOrganization> orgs = userOrgRepository.findByUserId(user.getId());
+
         List<UserOrganizationResponse> orgResponses = orgs.stream()
                 .map(uo -> UserOrganizationResponse.builder()
-                        .id(uo.getId())
-                        .userId(uo.getUserId())
+                        .id(uo.getId()).userId(uo.getUserId())
                         .organizationId(uo.getOrganization().getId())
                         .organizationName(uo.getOrganization().getName())
                         .organizationType(uo.getOrganization().getType().name())
@@ -148,7 +127,11 @@ public class UserProfileServiceImpl implements UserProfileService {
 
         return UserProfileResponse.builder()
                 .id(user.getId())
-                .email(user.getEmail())
+                // Sprint 2/3: use emailDisplay (decrypted AES) for display,
+                // NOT user.getEmail() which is the HMAC hash.
+                .email(user.getEmailDisplay() != null
+                        ? user.getEmailDisplay()
+                        : user.getEmail()) // fallback for pre-migration records
                 .firstName(user.getFirstName())
                 .lastName(user.getLastName())
                 .phone(user.getPhone())

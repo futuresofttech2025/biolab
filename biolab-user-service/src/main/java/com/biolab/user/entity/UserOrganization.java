@@ -1,6 +1,7 @@
 package com.biolab.user.entity;
 
 import jakarta.persistence.*;
+import jakarta.validation.constraints.Size;
 import lombok.*;
 import java.time.Instant;
 import java.util.UUID;
@@ -19,6 +20,7 @@ public class UserOrganization extends BaseEntity {
 
     /** User UUID — cross-schema reference to sec_schema.users. */
     @Column(name = "user_id", nullable = false)
+    @Size(max = 254)
     private UUID userId;
 
     @ManyToOne(fetch = FetchType.EAGER)

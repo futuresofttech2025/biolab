@@ -3,6 +3,12 @@
   BioLab Config Server — Spring Cloud Config
   Port: 8888 | Centralized configuration management for all microservices.
   Supports native (filesystem) and Git backends with encryption.
+
+  VULNERABILITY FIXES:
+    • CVE-2025-48924: commons-lang 2.x kept for Eureka compatibility (no patch exists);
+      commons-lang3 3.18.0 added for all application code.
+      Risk mitigated: config server is internal, ClassUtils.getClass() not exposed to untrusted input.
+    • GHSA-72hv-8253-57qq: jackson-core fixed via parent pom jackson-bom 2.18.6 override.
 -->
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -33,7 +39,19 @@
             </exclusions>
         </dependency>
 
-        <!-- Eureka Client — register with Discovery Server -->
+        <!--
+          Eureka Client — register with Discovery Server
+
+          NOTE on commons-lang (CVE-2025-48924):
+          The Netflix Eureka client internally imports from org.apache.commons.lang (2.x package).
+          commons-lang 2.x is EOL — there is NO patched release for the uncontrolled recursion CVE.
+          We allow the transitive commons-lang:2.6 (pinned in parent dependencyManagement) because:
+            1. Eureka requires it at runtime (NoClassDefFoundError without it)
+            2. The vulnerable method ClassUtils.getClass() is not exposed to external input
+               in this internal config server
+            3. commons-lang3:3.18.0 (patched) is used for all application-level code
+          If/when Spring Cloud Netflix removes the commons-lang 2.x dependency, remove this note.
+        -->
         <dependency>
             <groupId>org.springframework.cloud</groupId>
             <artifactId>spring-cloud-starter-netflix-eureka-client</artifactId>

@@ -1,5 +1,6 @@
 # ════════════════════════════════════════════════════════════════════════
-# BioLab Auth Service — Configuration
+# BioLab Auth Service — Config Server YAML
+# SPRINT 0: GAP-01 — JWT_SECRET fallback removed.
 # ════════════════════════════════════════════════════════════════════════
 
 server:
@@ -9,7 +10,8 @@ spring:
   datasource:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:biolab}?currentSchema=sec_schema
     username: ${DB_USERNAME:biolab}
-    password: ${DB_PASSWORD:biolab}
+    # GAP-01 FIX: no default
+    password: ${DB_PASSWORD}
     hikari:
       maximum-pool-size: 20
       minimum-idle: 5
@@ -23,23 +25,14 @@ spring:
         default_schema: sec_schema
         format_sql: true
 
-# ─── JWT Token Settings ──────────────────────────────────────────────
 app:
   jwt:
-    secret: ${JWT_SECRET:BioLabSecretKeyForJWTSigningMustBeAtLeast256BitsLong2026!}
+    # GAP-01 FIX: NO default — service refuses to start if JWT_SECRET is unset.
+    secret: ${JWT_SECRET}
     access-token-expiration-ms: 900000
     refresh-token-expiration-ms: 604800000
     issuer: biolab-auth-service
 
-  security:
-    bcrypt-strength: 12
-    max-login-attempts: 5
-    lockout-duration-minutes: 30
-    password-history-count: 5
-
-
-# ─── Security Controls (Slide 10) ─────────────────────────────────────
-app:
   security:
     bcrypt-strength: 12
     max-login-attempts: 5
@@ -48,22 +41,18 @@ app:
     password-rotation-days: 90
     max-concurrent-sessions: 5
     anomaly-detection-enabled: true
-  jwt:
-    # Access token: 15 minutes (Slide 5)
-    access-token-expiration-ms: 900000
-    # Refresh token: 7 days (Slide 5)
-    refresh-token-expiration-ms: 604800000
-    issuer: biolab-auth-service
-    # For RS256, set these in production:
-    # rsa-public-key: classpath:keys/public.pem
-    # rsa-private-key: classpath:keys/private.pem
+    # BUG-3 FIX: skip-mfa was missing from config; its @Value default is true,
+    # which silently bypassed the entire MFA challenge at login for ALL users —
+    # even those who had successfully enrolled MFA through Settings.
+    # false = enforce MFA at login (production). true = bypass (local dev only).
+    skip-mfa: false
+    require-email-verification: true
+
+  # GAP-01 FIX: no default for encryption key
   encryption:
-    # AES-256 key (Base64-encoded) — generate for production
-    # key: <base64-encoded-32-byte-key>
+    key: ${ENCRYPTION_KEY}
     key-rotation-days: 90
 
-# ─── ELK Stack ──────────────────────────────────────────────────
-app:
   elk:
     logstash-host: ${LOGSTASH_HOST:logstash}
     logstash-port: ${LOGSTASH_PORT:5000}

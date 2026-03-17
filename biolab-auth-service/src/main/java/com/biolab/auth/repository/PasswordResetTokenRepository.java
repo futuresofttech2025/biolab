@@ -9,21 +9,36 @@ import org.springframework.stereotype.Repository;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
  * Repository for {@link PasswordResetToken}.
  *
- * <p>No findByToken() — the raw token is never stored.
- * Callers must load candidate tokens by userId, then BCrypt-match
- * against {@code token_hash} in-memory.</p>
+ * <h3>Security design</h3>
+ * <p>The raw token is <strong>never stored</strong> — only its SHA-256 hex
+ * digest is persisted. The {@link #findByTokenHash(String)} method allows
+ * an O(1) indexed lookup of the hash, avoiding the previous {@code findAll()}
+ * full-table scan that was a performance and amplification risk.</p>
+ *
+ * @author BioLab Engineering Team
  */
 @Repository
 public interface PasswordResetTokenRepository extends JpaRepository<PasswordResetToken, UUID> {
 
     /**
+     * Looks up a reset token directly by its SHA-256 hash.
+     * The {@code uq_prt_token_hash} unique index makes this O(1).
+     * Replaces the previous {@code findAll()} + in-memory scan approach.
+     *
+     * @param tokenHash hex-encoded SHA-256 digest of the raw token
+     * @return the matching token record, if any
+     */
+    Optional<PasswordResetToken> findByTokenHash(String tokenHash);
+
+    /**
      * Returns all valid (unused, non-expired) tokens for a user.
-     * Used during lookup: iterate and BCrypt.matches() against each hash.
+     * Used during cleanup and for invalidating outstanding tokens.
      */
     @Query("""
            SELECT t FROM PasswordResetToken t
@@ -36,7 +51,7 @@ public interface PasswordResetTokenRepository extends JpaRepository<PasswordRese
                                                @Param("now")    Instant now);
 
     /**
-     * Invalidates all outstanding (unused, non-expired) reset tokens for a user.
+     * Invalidates all outstanding (unused) reset tokens for a user.
      * Called when a new reset is requested — prevents token accumulation.
      */
     @Modifying
@@ -51,7 +66,7 @@ public interface PasswordResetTokenRepository extends JpaRepository<PasswordRese
 
     /**
      * Purges expired/used tokens older than the given cutoff.
-     * Schedule via {@code @Scheduled} in a maintenance job.
+     * Called by the scheduled maintenance job in {@code AuthServiceImpl}.
      */
     @Modifying
     @Query("""

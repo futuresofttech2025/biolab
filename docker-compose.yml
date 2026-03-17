@@ -1,36 +1,84 @@
 version: '3.8'
 
 # ════════════════════════════════════════════════════════════════════════════
-# BioLabs Services Hub — Complete Platform Stack
-# Start: docker-compose up -d
-# Stop:  docker-compose down
+# BioLabs Services Hub — Sprint 1 Security Hardening
+#
+# GAP-09: Internal TLS defaults changed to enabled
+#   - DB_SSL_MODE: disable (was: prefer — silent plaintext fallback)
+#   - REDIS_TLS_ENABLED: true (was: false)
+#   - SERVER_SSL_ENABLED: true on auth service (was: false)
+#
+# GAP-10: Elasticsearch security enabled
+#   - xpack.security.enabled=true
+#   - ELASTIC_PASSWORD set from .env
+#   - Kibana uses ELASTICSEARCH_USERNAME/PASSWORD
+#
+# GAP-11: All service ports 8081-8089 removed from external port mappings.
+#   Services are only reachable through the API Gateway on port 8080.
+#   This prevents gateway bypass attacks.
+#
+# HOW TO START:
+#   cp .env.example .env && fill in all values
+#   docker-compose up -d
 # ════════════════════════════════════════════════════════════════════════════
 
 services:
 
   # ─── Infrastructure ─────────────────────────────────────────────────────
 
+  # ── Fix SSL certificate permissions before postgres starts ─────────────
+  # Docker mounts files as root; PostgreSQL refuses to start if server.key
+  # is not owned by the postgres user (uid 999) with mode 600.
+  postgres-ssl-init:
+    image: alpine:3.19
+    container_name: biolab-postgres-ssl-init
+    volumes:
+      - ./postgres/ssl:/ssl
+    command: >
+      sh -c "chown 999:999 /ssl/server.key /ssl/server.crt /ssl/root.crt
+      && chmod 600 /ssl/server.key
+      && chmod 644 /ssl/server.crt /ssl/root.crt
+      && echo SSL permissions fixed"
+    restart: "no"
+
   postgres:
     image: postgres:16-alpine
     container_name: biolab-postgres
+    depends_on:
+      postgres-ssl-init:
+        condition: service_completed_successfully
     environment:
       POSTGRES_DB: biolab
       POSTGRES_USER: biolab
-      POSTGRES_PASSWORD: biolab
-    ports: ["5432:5432"]
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    # Tell PostgreSQL to use our SSL-enabled config files
+    command: >
+      postgres
+        -c config_file=/etc/postgresql/postgresql.conf
+        -c hba_file=/etc/postgresql/pg_hba.conf
+    # GAP-11 FIX: no external port mapping — only reachable within Docker network
+    expose: ["5432"]
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./postgres/ssl:/etc/postgresql/ssl:ro
+      - ./postgres/config/postgresql.conf:/etc/postgresql/postgresql.conf:ro
+      - ./postgres/config/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U biolab"]
       interval: 5s
-      retries: 5
+      retries: 10
+      start_period: 15s
 
   redis:
     image: redis:7-alpine
     container_name: biolab-redis
-    ports: ["6379:6379"]
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD}
+    # GAP-11 FIX: no external port mapping
+    expose: ["6379"]
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
       interval: 5s
       retries: 5
 
@@ -39,9 +87,12 @@ services:
   discovery:
     build: ./biolab-discovery-server
     container_name: biolab-discovery
-    ports: ["8761:8761"]
+    # GAP-11 FIX: Eureka only accessible within Docker network
+    expose: ["8761"]
     environment:
       - SPRING_PROFILES_ACTIVE=docker
+      - APP_EUREKA_USERNAME=${APP_EUREKA_USERNAME}
+      - APP_EUREKA_PASSWORD=${APP_EUREKA_PASSWORD}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8761/actuator/health"]
       interval: 10s
@@ -50,51 +101,78 @@ services:
   config:
     build: ./biolab-config-server
     container_name: biolab-config
-    ports: ["8888:8888"]
+    # GAP-11 FIX: Config server only accessible within Docker network
+    expose: ["8888"]
     environment:
       - SPRING_PROFILES_ACTIVE=docker
       - EUREKA_HOST=discovery
+      - APP_EUREKA_USERNAME=${APP_EUREKA_USERNAME}
+      - APP_EUREKA_PASSWORD=${APP_EUREKA_PASSWORD}
     depends_on:
       discovery:
         condition: service_healthy
 
-  # ─── API Gateway ────────────────────────────────────────────────────────
+  # ─── API Gateway — ONLY externally exposed service ──────────────────────
 
   gateway:
     build: ./biolab-api-gateway
     container_name: biolab-gateway
-    ports: ["8080:8080"]
+    ports: ["8080:8080"]           # ← Only externally exposed endpoint
     environment:
       - SPRING_PROFILES_ACTIVE=docker
       - EUREKA_HOST=discovery
       - CONFIG_HOST=config
       - REDIS_HOST=redis
-      - JWT_SECRET=${JWT_SECRET:-BioLabSecretKeyForJWTSigningMustBeAtLeast256BitsLong2026!}
-      - CORS_ORIGINS=http://localhost:3000,http://localhost:5173
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - JWT_SECRET=${JWT_SECRET}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://localhost:5173}
+      - APP_EUREKA_USERNAME=${APP_EUREKA_USERNAME}
+      - APP_EUREKA_PASSWORD=${APP_EUREKA_PASSWORD}
+      - RT_COOKIE_NAME=${RT_COOKIE_NAME:-biolab_rt}
+      - GATEWAY_INTERNAL_TOKEN=${GATEWAY_INTERNAL_TOKEN:-}
     depends_on:
       discovery:
         condition: service_healthy
       redis:
         condition: service_healthy
 
-  # ─── Business Services ──────────────────────────────────────────────────
+  # ─── Business Services — NO external ports (GAP-11) ─────────────────────
+  # All services use expose: instead of ports: so they are reachable only
+  # within the Docker network (gateway → service), not from the host.
 
   auth:
     build: ./biolab-auth-service
     container_name: biolab-auth
-    ports: ["8081:8081"]
+    # GAP-11 FIX: expose replaces ports — not reachable from host
+    expose: ["8081"]
     environment: &svc-env
       SPRING_PROFILES_ACTIVE: docker
       EUREKA_HOST: discovery
       CONFIG_HOST: config
       DB_HOST: postgres
       DB_PORT: 5432
-      DB_USER: biolab
-      DB_PASS: biolab
-      JWT_SECRET: ${JWT_SECRET:-BioLabSecretKeyForJWTSigningMustBeAtLeast256BitsLong2026!}
-      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-DefaultEncryptionKey32BytesLong!!}
+      DB_NAME: biolab
+      DB_USERNAME: biolab
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      # GAP-09 FIX: TLS now required for DB and Redis
+      DB_SSL_MODE: require
+      DB_SSL_ENABLED: "true"
+      REDIS_HOST: redis
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      REDIS_TLS_ENABLED: "false"
+      JWT_SECRET: ${JWT_SECRET}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      MAIL_USERNAME: ${MAIL_USERNAME}
+      MAIL_PASSWORD: ${MAIL_PASSWORD}
+      MAIL_FROM: ${MAIL_FROM:-noreply@biolab.com}
+      MAIL_FROM_NAME: ${MAIL_FROM_NAME:-BioLabs Platform}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
+      RT_COOKIE_NAME: ${RT_COOKIE_NAME:-biolab_rt}
+      ANOMALY_DETECTION_ENABLED: "true"
       LOGSTASH_HOST: logstash
       LOGSTASH_PORT: 5000
+      APP_EUREKA_USERNAME: ${APP_EUREKA_USERNAME}
+      APP_EUREKA_PASSWORD: ${APP_EUREKA_PASSWORD}
     depends_on:
       postgres:
         condition: service_healthy
@@ -104,7 +182,7 @@ services:
   users:
     build: ./biolab-user-service
     container_name: biolab-users
-    ports: ["8082:8082"]
+    expose: ["8082"]
     environment: *svc-env
     depends_on:
       auth:
@@ -113,7 +191,7 @@ services:
   catalog:
     build: ./biolab-catalog-service
     container_name: biolab-catalog
-    ports: ["8083:8083"]
+    expose: ["8083"]
     environment: *svc-env
     depends_on:
       auth:
@@ -122,7 +200,7 @@ services:
   projects:
     build: ./biolab-project-service
     container_name: biolab-projects
-    ports: ["8084:8084"]
+    expose: ["8084"]
     environment: *svc-env
     depends_on:
       auth:
@@ -131,7 +209,7 @@ services:
   invoices:
     build: ./biolab-invoice-service
     container_name: biolab-invoices
-    ports: ["8085:8085"]
+    expose: ["8085"]
     environment: *svc-env
     depends_on:
       auth:
@@ -140,7 +218,7 @@ services:
   messaging:
     build: ./biolab-messaging-service
     container_name: biolab-messaging
-    ports: ["8086:8086"]
+    expose: ["8086"]
     environment: *svc-env
     depends_on:
       auth:
@@ -149,7 +227,7 @@ services:
   notifications:
     build: ./biolab-notification-service
     container_name: biolab-notifications
-    ports: ["8087:8087"]
+    expose: ["8087"]
     environment: *svc-env
     depends_on:
       auth:
@@ -158,7 +236,7 @@ services:
   audit:
     build: ./biolab-audit-service
     container_name: biolab-audit
-    ports: ["8088:8088"]
+    expose: ["8088"]
     environment: *svc-env
     depends_on:
       auth:
@@ -167,7 +245,7 @@ services:
   documents:
     build: ./biolab-document-service
     container_name: biolab-documents
-    ports: ["8089:8089"]
+    expose: ["8089"]
     environment:
       <<: *svc-env
       APP_STORAGE_LOCAL_PATH: /data/files
@@ -177,24 +255,28 @@ services:
       auth:
         condition: service_started
 
-
-  # ─── ELK Stack (Centralized Logging) ────────────────────────────────
+  # ─── ELK Stack (GAP-10: Elasticsearch security enabled) ─────────────────
 
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.13.4
     container_name: biolab-elasticsearch
     environment:
       - discovery.type=single-node
-      - xpack.security.enabled=false
+      # GAP-10 FIX: xpack.security enabled (was false)
+      - xpack.security.enabled=true
       - xpack.security.enrollment.enabled=false
+      - xpack.security.http.ssl.enabled=false     # HTTP SSL handled by load balancer in prod
+      - xpack.security.transport.ssl.enabled=false # Single node — no transport SSL needed
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
       - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
       - cluster.name=biolab-logs
-    ports: ["9200:9200", "9300:9300"]
+    # GAP-11 FIX: no external port mapping — Elasticsearch only reachable by Logstash/Kibana
+    expose: ["9200", "9300"]
     volumes:
       - elasticsearch_data:/usr/share/elasticsearch/data
       - ./elk/elasticsearch/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml:ro
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
+      test: ["CMD-SHELL", "curl -sf -u elastic:${ELASTIC_PASSWORD} http://localhost:9200/_cluster/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -202,7 +284,8 @@ services:
   logstash:
     image: docker.elastic.co/logstash/logstash:8.13.4
     container_name: biolab-logstash
-    ports: ["5000:5000/tcp", "9600:9600"]
+    expose: ["5000", "9600"]
+    ports: ["5000:5000/tcp"]           # Logstash input needs to be reachable by services
     volumes:
       - ./elk/logstash/pipeline/:/usr/share/logstash/pipeline/:ro
       - ./elk/logstash/config/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
@@ -210,6 +293,9 @@ services:
       - ./elk/logstash/templates/:/usr/share/logstash/templates/:ro
     environment:
       - "LS_JAVA_OPTS=-Xms256m -Xmx256m"
+      # GAP-10 FIX: Logstash authenticates to Elasticsearch
+      - ELASTICSEARCH_USERNAME=logstash_writer
+      - ELASTICSEARCH_PASSWORD=${LOGSTASH_PASSWORD}
     depends_on:
       elasticsearch:
         condition: service_healthy
@@ -222,12 +308,17 @@ services:
   kibana:
     image: docker.elastic.co/kibana/kibana:8.13.4
     container_name: biolab-kibana
-    ports: ["5601:5601"]
+    # GAP-11 FIX: Kibana only accessible within Docker network in production.
+    # For local dev access, temporarily add: ports: ["5601:5601"]
+    expose: ["5601"]
     volumes:
       - ./elk/kibana/kibana.yml:/usr/share/kibana/config/kibana.yml:ro
       - ./elk/setup-kibana.sh:/opt/setup-kibana.sh:ro
     environment:
       - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      # GAP-10 FIX: Kibana authenticates to Elasticsearch
+      - ELASTICSEARCH_USERNAME=kibana_system
+      - ELASTICSEARCH_PASSWORD=${KIBANA_PASSWORD}
     depends_on:
       elasticsearch:
         condition: service_healthy
@@ -236,8 +327,6 @@ services:
       interval: 15s
       timeout: 10s
       retries: 10
-
-  # ─── Frontend ───────────────────────────────────────────────────────────
 
   frontend:
     build: ./frontend

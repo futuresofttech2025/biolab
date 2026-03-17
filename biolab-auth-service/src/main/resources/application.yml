@@ -1,23 +1,67 @@
 # ════════════════════════════════════════════════════════════════════════
-# BioLab Auth Service — JWT + Refresh Token Rotation
-# Port: 8081 | Schema: sec_schema
+# BioLab Auth Service — application.yml
+#
+# SECURITY POSTURE BY PROFILE
+# ─────────────────────────────────────────────────────────────────────
+# default (local dev): safe fallbacks — service starts without any env vars.
+#   DB SSL:    sslmode=prefer  (connects to plain local PostgreSQL)
+#   Redis SSL: disabled
+#   Secrets:   dev-only fallback strings (clearly labelled non-production)
+#
+# prod: ALL fallbacks removed. Service fails fast if any secret is missing.
+#   Activate with: SPRING_PROFILES_ACTIVE=prod
+#
+# QUICK START (local):
+#   mvn spring-boot:run                          # no env vars needed
+#
+# PRODUCTION:
+#   export JWT_SECRET=$(openssl rand -base64 32)
+#   export ENCRYPTION_KEY=1:$(openssl rand -base64 32)
+#   export DB_PASSWORD=<strong-password>
+#   ... (see .env.example for full list)
+#   SPRING_PROFILES_ACTIVE=prod java -jar biolab-auth-service.jar
 # ════════════════════════════════════════════════════════════════════════
+
 server:
-  port: 8081
+  port: ${SERVER_PORT:8081}
   shutdown: graceful
+  ssl:
+    enabled: ${SERVER_SSL_ENABLED:false}
+    key-store: ${KEYSTORE_PATH:classpath:keystore/biolab-auth-dev.p12}
+    key-store-password: ${KEYSTORE_PASSWORD:changeit}
+    key-store-type: PKCS12
+    key-alias: ${KEY_ALIAS:biolab-auth}
+    protocol: TLS
+    enabled-protocols: TLSv1.3,TLSv1.2
+    ciphers:
+      - TLS_AES_256_GCM_SHA384
+      - TLS_CHACHA20_POLY1305_SHA256
+      - TLS_AES_128_GCM_SHA256
+      - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
+      - TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+  http2:
+    enabled: ${SERVER_HTTP2_ENABLED:true}
+
 spring:
   application:
     name: biolab-auth-service
   config:
-    import: optional:configserver:http://${CONFIG_HOST:localhost}:${CONFIG_PORT:8888}
+    import: optional:configserver:http://${CONFIG_SERVER_USERNAME:admin}:${CONFIG_SERVER_PASSWORD:admin}@${CONFIG_HOST:localhost}:${CONFIG_PORT:8888}
+
   datasource:
-    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:postgres}
+    # Default profile: sslmode=prefer — connects to plain local PostgreSQL without SSL.
+    # Prod profile overrides this to sslmode=require (see bottom of file).
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:biolab}?sslmode=${DB_SSL_MODE:prefer}
     username: ${DB_USERNAME:postgres}
     password: ${DB_PASSWORD:admin}
     hikari:
       maximum-pool-size: 20
       minimum-idle: 5
       connection-timeout: 30000
+      data-source-properties:
+        ssl: ${DB_SSL_ENABLED:false}
+        sslmode: ${DB_SSL_MODE:prefer}
+
   jpa:
     hibernate:
       ddl-auto: none
@@ -27,69 +71,162 @@ spring:
         default_schema: sec_schema
         format_sql: true
         jdbc.time_zone: UTC
+
   flyway:
     enabled: false
-  # ─── JavaMail ─────────────────────────────────────────────────────────
+
   mail:
     host: smtp.gmail.com
     port: 587
     username: ${MAIL_USERNAME:ndate1976@gmail.com}
-    password: ${MAIL_PASSWORD:txluyrnweevhiblr}
+    password: ${MAIL_PASSWORD:fkaf cmhm cnyr kjrd}
     properties:
-      mail:
-        smtp:
-          auth: true
-          starttls:
-            enable: true
-            required: true
-          ssl:
-            trust: smtp.gmail.com
-          connectiontimeout: 5000
-          timeout: 5000
-          writetimeout: 5000
+      mail.smtp.auth: true
+      mail.smtp.starttls.enable: true
+      mail.smtp.starttls.required: true
+      mail.smtp.ssl.trust: smtp.gmail.com
+    # Don't fail startup if mail server is unreachable in local dev
     test-connection: false
+
   data:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      # Default: Redis SSL disabled — plain local Redis (docker-compose default)
+      ssl:
+        enabled: ${REDIS_TLS_ENABLED:false}
 
 app:
-  # ─── Email sender identity — read by EmailService ──────────────────
-  email:
-    from: ${MAIL_FROM:ndate1976@gmail.com}          # must match spring.mail.username
-    from-name: ${MAIL_FROM_NAME:BioLabs Platform}
-
-  # ─── Frontend URL — read by EmailService for link generation ───────
+  name: BioLabs
   frontend-url: ${FRONTEND_URL:http://localhost:5173}
 
+  mail:
+    from: ${MAIL_FROM:ndate1976@gmail.com}
+    from-name: ${MAIL_FROM_NAME:BioLabs Platform}
+
   jwt:
-    secret: ${JWT_SECRET:BioLabSecretKeyForJWTSigningMustBeAtLeast256BitsLong2026!}
+    # Dev fallback — clearly non-production. Prod profile has NO fallback.
+    secret: ${JWT_SECRET:LocalDevSecretKey-Replace-Before-Any-Deployment-32chars!}
     access-token-expiration-ms: 900000
     refresh-token-expiration-ms: 604800000
     issuer: biolab-auth-service
+    refresh-token-cookie-name: ${RT_COOKIE_NAME:biolab_rt}
+
   security:
     bcrypt-strength: 12
     max-login-attempts: 5
     lockout-duration-minutes: 30
     password-history-count: 5
     max-active-sessions: 5
+    # Disabled by default in local dev — new IPs always score >= 3 (no login history)
+    # Set ANOMALY_DETECTION_ENABLED=true in production
+    anomaly-detection-enabled: ${ANOMALY_DETECTION_ENABLED:false}
+    # Disabled by default in local dev — no real email server available
+    # Set REQUIRE_EMAIL_VERIFICATION=true in production
+    require-email-verification: ${REQUIRE_EMAIL_VERIFICATION:false}
+    # Set to false in production to enforce MFA
+    skip-mfa: ${SKIP_MFA:false}
+    trusted-proxy-cidrs: ${TRUSTED_PROXY_CIDRS:127.0.0.1/32,::1/128}
     elk:
-      logstash-host: ${LOGSTASH_HOST:logstash}
+      logstash-host: ${LOGSTASH_HOST:localhost}
       logstash-port: ${LOGSTASH_PORT:5000}
+
+  encryption:
+    # Dev fallback key (version 1). Prod profile has NO fallback.
+    key: ${ENCRYPTION_KEY:1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=}
+    legacy-keys: ${ENCRYPTION_LEGACY_KEYS:}
+
+  docs:
+    enabled: ${DOCS_ENABLED:false}
 
 eureka:
   instance:
-    prefer-ip-address: true
+    prefer-ip-address: false
+    hostname: localhost
+    ip-address: 127.0.0.1
+    secure-port-enabled: ${SERVER_SSL_ENABLED:false}
+    non-secure-port-enabled: true
   client:
     service-url:
       defaultZone: http://${APP_EUREKA_USERNAME:admin}:${APP_EUREKA_PASSWORD:admin}@${EUREKA_HOST:localhost}:${EUREKA_PORT:8761}/eureka/
+
 management:
-  endpoints.web.exposure.include: health,info,metrics,prometheus
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: when-authorized
+  health:
+    mail:
+      enabled: false   # Disable mail health check — auth failure shows as DOWN even when service works fine
+
 springdoc:
-  api-docs.path: /v3/api-docs
-  swagger-ui.path: /swagger-ui.html
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
 logging:
   level:
     root: INFO
     com.biolab.auth: DEBUG
-  pattern.console: "%d{HH:mm:ss.SSS} [%thread] %-5level [%logger{36}] - %msg%n"
+  pattern:
+    console: "%d{HH:mm:ss.SSS} [%thread] %-5level [%logger{36}] - %msg%n"
+
+---
+# ════════════════════════════════════════════════════════════════════════
+# Profile: prod
+# ALL fallbacks removed — service refuses to start if any secret is unset.
+# Activate: SPRING_PROFILES_ACTIVE=prod
+# ════════════════════════════════════════════════════════════════════════
+spring:
+  config:
+    activate:
+      on-profile: prod
+
+  datasource:
+    # Prod: require SSL — connection refused if DB has no SSL certificate
+    url: jdbc:postgresql://${DB_HOST}:${DB_PORT:5432}/${DB_NAME:biolab}?sslmode=require
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    hikari:
+      data-source-properties:
+        ssl: true
+        sslmode: require
+
+  data:
+    redis:
+      password: ${REDIS_PASSWORD}
+      ssl:
+        enabled: true
+
+  mail:
+    username: ${MAIL_USERNAME}
+    password: ${MAIL_PASSWORD}
+
+app:
+  jwt:
+    secret: ${JWT_SECRET}
+
+  encryption:
+    key: ${ENCRYPTION_KEY}
+
+  security:
+    require-email-verification: true
+    skip-mfa: false
+    anomaly-detection-enabled: true
+
+  mail:
+    from: ${MAIL_FROM}
+
+server:
+  ssl:
+    key-store-password: ${KEYSTORE_PASSWORD}
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://${APP_EUREKA_USERNAME}:${APP_EUREKA_PASSWORD}@${EUREKA_HOST}:${EUREKA_PORT:8761}/eureka/

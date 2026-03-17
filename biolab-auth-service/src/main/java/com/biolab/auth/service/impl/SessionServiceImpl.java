@@ -3,12 +3,14 @@ package com.biolab.auth.service.impl;
 import com.biolab.auth.dto.response.UserSessionResponse;
 import com.biolab.auth.entity.UserSession;
 import com.biolab.auth.entity.enums.RevokedReason;
+import com.biolab.auth.exception.AuthException;
 import com.biolab.auth.exception.ResourceNotFoundException;
 import com.biolab.auth.repository.RefreshTokenRepository;
 import com.biolab.auth.repository.UserSessionRepository;
 import com.biolab.auth.service.SessionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,16 +21,23 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Implementation of SessionService for managing user sessions and tokens.
- * 
+ * Session service implementation.
+ *
+ * <h3>Fixes applied</h3>
+ * <ul>
+ *   <li>FIX-17: {@link #terminateSession(UUID, UUID)} now verifies the session belongs
+ *       to the given user before deactivating it, preventing cross-user session kill.</li>
+ * </ul>
+ *
  * @author BioLab Engineering Team
+ * @version 2.0.0
  */
 @Service
 @RequiredArgsConstructor
 @Transactional
 @Slf4j
 public class SessionServiceImpl implements SessionService {
-    
+
     private final UserSessionRepository sessionRepo;
     private final RefreshTokenRepository refreshTokenRepo;
 
@@ -37,16 +46,29 @@ public class SessionServiceImpl implements SessionService {
     public List<UserSessionResponse> getActiveSessions(UUID userId) {
         log.debug("Fetching active sessions for user: {}", userId);
         return sessionRepo.findByUserIdAndIsActiveTrue(userId)
-                .stream()
-                .map(this::toResponse)
-                .toList();
+                .stream().map(this::toResponse).toList();
     }
 
+    /**
+     * FIX-17: verifies session belongs to {@code userId} before deactivating.
+     * Prevents authenticated user A from terminating user B's sessions by
+     * guessing or enumerating session UUIDs.
+     */
     @Override
-    public void terminateSession(UUID sessionId) {
-        log.info("Terminating session: {}", sessionId);
+    public void terminateSession(UUID userId, UUID sessionId) {
+        log.info("Terminating session {} for user {}", sessionId, userId);
+
         UserSession session = sessionRepo.findById(sessionId)
                 .orElseThrow(() -> new ResourceNotFoundException("Session", "id", sessionId));
+
+        // FIX-17: ownership check — session must belong to the requesting user
+        if (!session.getUser().getId().equals(userId)) {
+            log.warn("Ownership violation: user {} attempted to terminate session {} owned by {}",
+                    userId, sessionId, session.getUser().getId());
+            throw new AuthException(
+                    "Session does not belong to this user.", HttpStatus.FORBIDDEN);
+        }
+
         session.setIsActive(false);
         sessionRepo.save(session);
     }
@@ -58,67 +80,44 @@ public class SessionServiceImpl implements SessionService {
     }
 
     /**
-     * Force logout a user by:
-     * 1. Revoking all refresh tokens
-     * 2. Deactivating all sessions
-     * 
-     * The user will be immediately logged out on their next API call
-     * because their access token will fail validation (or expire soon)
-     * and their refresh token will be invalid.
+     * Force logout: revoke all refresh tokens + deactivate all sessions.
+     * Used by admins for immediate account lockdown.
      */
     @Override
     public int forceLogoutUser(UUID userId) {
-        log.warn("🔒 FORCE LOGOUT: Revoking all tokens and sessions for user: {}", userId);
-        
-        // 1. Revoke all refresh tokens
+        log.warn("FORCE LOGOUT: revoking all tokens and sessions for user: {}", userId);
+
         int revokedTokens = refreshTokenRepo.revokeAllByUserIdWithReason(
                 userId, RevokedReason.ADMIN_REVOKED, Instant.now());
         log.info("Revoked {} refresh tokens for user {}", revokedTokens, userId);
-        
-        // 2. Deactivate all sessions
+
         int deactivatedSessions = sessionRepo.deactivateAllUserSessions(userId);
         log.info("Deactivated {} sessions for user {}", deactivatedSessions, userId);
-        
+
         return revokedTokens + deactivatedSessions;
     }
 
-    /**
-     * Get platform-wide session statistics for admin dashboard.
-     */
     @Override
     @Transactional(readOnly = true)
     public Map<String, Object> getSessionStats() {
         Instant now = Instant.now();
         Map<String, Object> stats = new HashMap<>();
-        
-        // Count active sessions
-        long activeSessions = sessionRepo.countByIsActiveTrue();
-        stats.put("activeSessions", activeSessions);
-        
-        // Count active refresh tokens (non-revoked, non-expired)
-        long activeTokens = refreshTokenRepo.countActiveTokens(now);
-        stats.put("activeRefreshTokens", activeTokens);
-        
-        // Count unique users with active sessions
-        long uniqueUsers = sessionRepo.countDistinctUsersByIsActiveTrue();
-        stats.put("uniqueUsersWithSessions", uniqueUsers);
-        
-        // Sessions created in last 24 hours
-        long recentSessions = sessionRepo.countByCreatedAtAfter(now.minusSeconds(86400));
-        stats.put("sessionsLast24Hours", recentSessions);
-        
+        stats.put("activeSessions",          sessionRepo.countByIsActiveTrue());
+        stats.put("activeRefreshTokens",     refreshTokenRepo.countActiveTokens(now));
+        stats.put("uniqueUsersWithSessions", sessionRepo.countDistinctUsersByIsActiveTrue());
+        stats.put("sessionsLast24Hours",     sessionRepo.countByCreatedAtAfter(now.minusSeconds(86_400)));
         return stats;
     }
 
-    private UserSessionResponse toResponse(UserSession session) {
+    private UserSessionResponse toResponse(UserSession s) {
         return UserSessionResponse.builder()
-                .id(session.getId())
-                .ipAddress(session.getIpAddress())
-                .userAgent(session.getUserAgent())
-                .isActive(session.getIsActive())
-                .createdAt(session.getCreatedAt())
-                .expiresAt(session.getExpiresAt())
-                .lastAccessedAt(session.getLastAccessedAt())
+                .id(s.getId())
+                .ipAddress(s.getIpAddress())
+                .userAgent(s.getUserAgent())
+                .isActive(s.getIsActive())
+                .createdAt(s.getCreatedAt())
+                .expiresAt(s.getExpiresAt())
+                .lastAccessedAt(s.getLastAccessedAt())
                 .build();
     }
 }

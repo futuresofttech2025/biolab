@@ -1,5 +1,6 @@
 package com.biolab.auth.security;
 
+import com.biolab.auth.entity.enums.LoginStatus;
 import com.biolab.auth.repository.LoginAuditLogRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -33,6 +34,9 @@ public class LoginAnomalyDetector {
 
     private final LoginAuditLogRepository auditLogRepository;
 
+    @org.springframework.beans.factory.annotation.Value("${app.security.anomaly-detection-enabled:false}")
+    private boolean enabled;
+
     /**
      * Calculates an anomaly score for a login attempt.
      *
@@ -42,6 +46,11 @@ public class LoginAnomalyDetector {
      * @return anomaly score (0 = normal, 1-3 = elevated, 4+ = suspicious)
      */
     public int calculateAnomalyScore(UUID userId, String ipAddress, String userAgent) {
+        // Short-circuit when disabled — returns 0 so no forced MFA or blocking
+        if (!enabled) {
+            log.debug("Anomaly detection disabled — skipping check for user {}", userId);
+            return 0;
+        }
         int score = 0;
         Instant since = Instant.now().minus(30, ChronoUnit.DAYS);
 
@@ -56,7 +65,7 @@ public class LoginAnomalyDetector {
         // Check for multiple failed attempts from this IP in last hour
         Instant lastHour = Instant.now().minus(1, ChronoUnit.HOURS);
         long failedFromIp = auditLogRepository.countByIpAddressAndStatusAndCreatedAtAfter(
-                ipAddress, "FAILURE", lastHour);
+                ipAddress, LoginStatus.FAILURE, lastHour);
         if (failedFromIp >= 3) {
             score += 2;
             log.warn("Anomaly: {} failed logins from IP {} in last hour", failedFromIp, ipAddress);

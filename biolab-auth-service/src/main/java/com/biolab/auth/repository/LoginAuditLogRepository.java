@@ -1,6 +1,7 @@
 package com.biolab.auth.repository;
 
 import com.biolab.auth.entity.LoginAuditLog;
+import com.biolab.auth.entity.enums.LoginStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -46,7 +47,7 @@ public interface LoginAuditLogRepository extends JpaRepository<LoginAuditLog, UU
            "WHERE l.ipAddress = :ip AND l.status = :status AND l.createdAt > :since")
     long countByIpAddressAndStatusAndCreatedAtAfter(
             @Param("ip") String ipAddress,
-            @Param("status") String status,
+            @Param("status") LoginStatus status,
             @Param("since") Instant since);
 
     /** Count distinct users who logged in from a specific IP (credential stuffing detection). */

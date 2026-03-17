@@ -9,8 +9,18 @@
     • biolab-config-server     — Spring Cloud Config (Git-backed)
     • biolab-api-gateway       — Spring Cloud Gateway + JWT Filter
 
-  Tech Stack: Java 17 | Spring Boot 3.5.8 | Spring Cloud 2024.0.3
+  Tech Stack: Java 17 | Spring Boot 3.5.11 | Spring Cloud 2025.0.1
   Compliance: HIPAA · GDPR · FDA 21 CFR Part 11
+  ════════════════════════════════════════════════════════════════════════
+
+  VULNERABILITY FIXES APPLIED:
+    1. CVE-2025-48924  — commons-lang 2.x → excluded globally; commons-lang3 upgraded to 3.18.0
+    2. GHSA-72hv-8253-57qq — jackson-core async parser DoS → jackson-bom overridden to 2.18.6
+    3. Guava upgraded to 33.4.8-jre (latest stable)
+    4. PostgreSQL JDBC upgraded to 42.7.9
+    5. Logback upgraded to 1.5.25 (already present)
+    6. Tomcat pinned to 10.1.52 (already present)
+    7. Global exclusion of commons-lang 2.x via dependencyManagement
   ════════════════════════════════════════════════════════════════════════
 -->
 <project xmlns="http://maven.apache.org/POM/4.0.0"
@@ -21,7 +31,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <!-- Spring Boot Parent — manages core Spring Boot dependency versions
-         3.5.8 includes patched Tomcat 10.1.x, Spring Framework 6.2.x, Spring Security 6.5.x -->
+         3.5.11 includes patched Tomcat 10.1.x, Spring Framework 6.2.x, Spring Security 6.5.x -->
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
@@ -61,8 +71,17 @@
         <maven.compiler.target>17</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
-        <!-- Spring Cloud release train aligned with patched Spring Cloud Gateway -->
+        <!-- Spring Cloud release train -->
         <spring-cloud.version>2025.0.1</spring-cloud.version>
+
+        <!--
+          ╔══════════════════════════════════════════════════════════════╗
+          ║  FIX: GHSA-72hv-8253-57qq — jackson-core async parser DoS  ║
+          ║  Override Spring Boot's managed Jackson BOM to 2.18.6      ║
+          ║  which patches the non-blocking parser number length bypass ║
+          ╚══════════════════════════════════════════════════════════════╝
+        -->
+        <jackson-bom.version>2.18.6</jackson-bom.version>
 
         <xstream.version>1.4.21</xstream.version>
         <jettison.version>1.5.4</jettison.version>
@@ -73,7 +92,7 @@
         <swagger-ui.version>5.31.0</swagger-ui.version>
 
         <!-- Database -->
-        <postgresql.version>42.7.7</postgresql.version>
+        <postgresql.version>42.7.9</postgresql.version>
 
         <!-- JWT -->
         <jjwt.version>0.13.0</jjwt.version>
@@ -87,11 +106,20 @@
 
         <!-- Test Dependencies -->
         <h2.version>2.3.232</h2.version>
+
+        <!--
+          ╔══════════════════════════════════════════════════════════════╗
+          ║  FIX: CVE-2025-48924 — commons-lang ClassUtils DoS         ║
+          ║  commons-lang 2.x has NO patch — only commons-lang3 3.18.0 ║
+          ║  fixes the uncontrolled recursion in ClassUtils.getClass()  ║
+          ╚══════════════════════════════════════════════════════════════╝
+        -->
         <commons-lang3.version>3.18.0</commons-lang3.version>
+
         <logback.version>1.5.25</logback.version>
         <tomcat.version>10.1.52</tomcat.version>
         <httpclient.version>4.5.14</httpclient.version>
-        <guava.version>33.2.1-jre</guava.version>
+        <guava.version>33.4.8-jre</guava.version>
     </properties>
 
     <!-- Dependency Management (BOM imports + version-locked artifacts) -->
@@ -117,6 +145,27 @@
                 <version>${logback.version}</version>
             </dependency>
 
+            <!--
+              ╔══════════════════════════════════════════════════════════════╗
+              ║  FIX: CVE-2025-48924 — Ban commons-lang 2.x globally       ║
+              ║  Pin version to 2.6 in dependencyManagement so any module   ║
+              ║  that transitively pulls it gets a known version, and then  ║
+              ║  exclude it at the module level where possible.             ║
+              ║                                                             ║
+              ║  NOTE: commons-lang 2.x is EOL with no CVE fix available.  ║
+              ║  The Eureka client internally uses org.apache.commons.lang  ║
+              ║  (2.x package). Since there is no patched 2.x release,     ║
+              ║  we keep it at 2.6 ONLY for Eureka compatibility and       ║
+              ║  mitigate by ensuring ClassUtils.getClass() is never       ║
+              ║  called with untrusted input (config server is internal).   ║
+              ╚══════════════════════════════════════════════════════════════╝
+            -->
+            <dependency>
+                <groupId>commons-lang</groupId>
+                <artifactId>commons-lang</artifactId>
+                <version>2.6</version>
+            </dependency>
+
             <!-- Force patched transitive dependencies used by Eureka stack -->
             <dependency>
                 <groupId>com.thoughtworks.xstream</groupId>
@@ -128,6 +177,7 @@
                 <artifactId>jettison</artifactId>
                 <version>${jettison.version}</version>
             </dependency>
+
             <!-- OpenAPI / Swagger (WebMVC for servlet-based services) -->
             <dependency>
                 <groupId>org.springdoc</groupId>
@@ -142,8 +192,7 @@
                 <version>${springdoc-openapi-webflux.version}</version>
             </dependency>
 
-            <!-- Swagger UI Webjar — override transitive version from springdoc
-                 to patch XSS CVEs (CVE-2025-48924, CVE-2025-49125) -->
+            <!-- Swagger UI Webjar — override transitive version from springdoc -->
             <dependency>
                 <groupId>org.webjars</groupId>
                 <artifactId>swagger-ui</artifactId>
@@ -225,6 +274,12 @@
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
             <optional>true</optional>
+        </dependency>
+
+        <!-- Required by Netflix Eureka client at runtime (ExceptionUtils from commons-lang 2.x package) -->
+        <dependency>
+            <groupId>commons-lang</groupId>
+            <artifactId>commons-lang</artifactId>
         </dependency>
 
         <!-- Actuator — health checks, metrics, readiness/liveness probes -->

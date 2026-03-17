@@ -1,20 +1,27 @@
 # ═══════════════════════════════════════════════════════════════
-# BioLabs — Elasticsearch Configuration
+# BioLab — Elasticsearch Configuration
+# SPRINT 1 — GAP-10: Security enabled
 # ═══════════════════════════════════════════════════════════════
 cluster.name: "biolab-logs"
 network.host: 0.0.0.0
 
-# Single-node mode (development)
+# Single-node mode
 discovery.type: single-node
 
-# Disable security for local dev (enable in production!)
-xpack.security.enabled: false
+# GAP-10 FIX: xpack.security enabled (was false)
+# Authentication is now required for all Elasticsearch API calls.
+# Users:
+#   elastic            → superuser (password: ${ELASTIC_PASSWORD} from .env)
+#   logstash_writer    → write-only to biolab-* indices (set up in setup-es-users.sh)
+#   kibana_system      → Kibana built-in user (password: ${KIBANA_PASSWORD})
+xpack.security.enabled: true
 xpack.security.enrollment.enabled: false
+
+# HTTP SSL: handled upstream by load balancer / Nginx in production.
+# Set to true if Elasticsearch is directly internet-facing.
 xpack.security.http.ssl.enabled: false
 xpack.security.transport.ssl.enabled: false
 
-# Memory settings (keep low for dev)
+# Memory settings
 indices.memory.index_buffer_size: "20%"
-
-# ILM — auto-manage old indices
 xpack.monitoring.collection.enabled: false

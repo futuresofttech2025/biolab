@@ -1,22 +1,47 @@
-# biolab-notification-service — Config Server Overrides
+# ════════════════════════════════════════════════════════════════════════
+# BioLab Notification Service — Config Server Overrides
+#
+# FIXES APPLIED:
+#   FIX-NOTIF-1: DB env var names corrected (DB_USER→DB_USERNAME, DB_PASS→DB_PASSWORD)
+#                to match the standard env vars defined in .env and used by all
+#                other services. Wrong names caused HikariCP connection failure at
+#                startup, making ALL notification endpoints return 500/503.
+#   FIX-NOTIF-2: Duplicate top-level 'app:' key merged into one block.
+#                YAML parsers use the LAST occurrence of a duplicate key,
+#                silently discarding jwt/encryption config → JWT validation failed.
+# ════════════════════════════════════════════════════════════════════════
+
 server:
   port: 8087
+
 spring:
   datasource:
-    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/biolab
-    username: ${DB_USER:biolab}
-    password: ${DB_PASS:biolab}
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:biolab}
+    # FIX-NOTIF-1: was DB_USER / DB_PASS — must match the env vars set in .env
+    username: ${DB_USERNAME:biolab}
+    password: ${DB_PASSWORD}
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 30000
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        default_schema: app_schema
+
+# FIX-NOTIF-2: merged both 'app:' blocks into one — duplicate key caused
+# the jwt/encryption config to be silently overwritten by the elk config
 app:
   jwt:
-    secret: ${JWT_SECRET:BioLabSecretKeyForJWTSigningMustBeAtLeast256BitsLong2026!}
+    secret: ${JWT_SECRET}
     issuer: biolab-auth-service
   encryption:
-    key: ${ENCRYPTION_KEY:DefaultEncryptionKey32BytesLong!!}
+    key: ${ENCRYPTION_KEY}
     algorithm: AES/GCM/NoPadding
     key-rotation-days: 90
-
-# ─── ELK Stack ──────────────────────────────────────────────────
-app:
   elk:
     logstash-host: ${LOGSTASH_HOST:logstash}
     logstash-port: ${LOGSTASH_PORT:5000}

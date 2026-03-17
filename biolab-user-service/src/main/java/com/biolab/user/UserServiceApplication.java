@@ -3,6 +3,7 @@ package com.biolab.user;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.cloud.client.discovery.EnableDiscoveryClient;
+import org.springframework.context.annotation.ComponentScan;
 import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
 
 import java.util.TimeZone;
@@ -10,34 +11,27 @@ import java.util.TimeZone;
 /**
  * BioLab User Service — User Profile, Organization & RBAC Management.
  *
- * <h3>Responsibilities:</h3>
- * <ul>
- *   <li>User profile CRUD (view, update, deactivate, avatar upload)</li>
- *   <li>Organization CRUD (BUYER/SUPPLIER entities on the platform)</li>
- *   <li>User-Organization membership management</li>
- *   <li>Role viewing and assignment (RBAC — reads sec_schema roles)</li>
- *   <li>Permission viewing (granular module-action permissions)</li>
- *   <li>Admin user search with filtering and pagination</li>
- * </ul>
- *
- * <h3>Schemas:</h3>
- * <ul>
- *   <li>{@code sec_schema} — users, roles, permissions, user_roles, role_permissions</li>
- *   <li>{@code app_schema} — organizations, user_organizations</li>
- * </ul>
- *
- * <h3>Security:</h3>
- * <p>All endpoints require JWT authentication via the API Gateway.
- * The gateway sets {@code X-User-Id}, {@code X-User-Email}, {@code X-User-Roles}
- * headers after JWT validation. This service trusts those headers.</p>
+ * <h3>Component Scan</h3>
+ * <p>Explicitly scans {@code com.biolab.common} sub-packages to register
+ * shared beans from biolab-common (AesEncryptionService, converters, filters).
+ * The full {@code com.biolab.common} package is NOT scanned to avoid pulling
+ * in {@code GlobalExceptionHandler} which conflicts with this service's own
+ * exception handler. Instead only the sub-packages actually needed are listed.</p>
  *
  * @author BioLab Engineering Team
- * @version 1.0.0
- * @since 2026-02-16
+ * @version 2.0.0
  */
 @SpringBootApplication
 @EnableDiscoveryClient
 @EnableJpaAuditing
+@ComponentScan(basePackages = {
+        "com.biolab.user",                // this service
+        "com.biolab.common.encryption",   // AesEncryptionService, EncryptedStringConverter, DeterministicStringConverter
+        "com.biolab.common.security",     // JwtAuthenticationFilter, SecurityHeadersFilter, PermissionChecker
+        "com.biolab.common.logging",      // MdcLoggingFilter, LoggingInterceptor
+        "com.biolab.common.rls",          // RlsContextAspect
+        "com.biolab.common.audit"         // AuditInterceptor
+})
 public class UserServiceApplication {
     public static void main(String[] args) {
         TimeZone.setDefault(TimeZone.getTimeZone("Asia/Kolkata"));

@@ -55,6 +55,15 @@ public class EmailService {
         send(toEmail, subject, html);
     }
 
+    // ─── MFA Email Code ──────────────────────────────────────────────────
+
+    @Async
+    public void sendMfaCode(String toEmail, String firstName, String code) {
+        String subject = "Your BioLabs verification code: " + code;
+        String html = buildMfaCodeHtml(firstName, code);
+        send(toEmail, subject, html);
+    }
+
     // ─── Core send ────────────────────────────────────────────────────────
 
     private void send(String to, String subject, String html) {
@@ -133,5 +142,33 @@ public class EmailService {
     private String escapeHtml(String s) {
         if (s == null) return "";
         return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;");
+    }
+
+    private String buildMfaCodeHtml(String firstName, String code) {
+        return "<!DOCTYPE html><html><body style=\"margin:0;padding:0;background:#f1f5f9;font-family:Arial,sans-serif\">" +
+                "<table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"><tr><td align=\"center\" style=\"padding:40px 16px\">" +
+                "<table width=\"560\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.08)\">" +
+                "<tr><td style=\"background:linear-gradient(135deg,#0d9488,#059669);padding:36px 40px;text-align:center\">" +
+                "<div style=\"font-size:28px;font-weight:900;color:#ffffff\">&#x1F9EA; BioLabs</div>" +
+                "<div style=\"color:rgba(255,255,255,.8);font-size:13px;margin-top:6px\">Secure Biotech Services Platform</div>" +
+                "</td></tr>" +
+                "<tr><td style=\"padding:40px\">" +
+                "<h2 style=\"color:#0f172a;font-size:22px;margin:0 0 12px\">Hi " + escapeHtml(firstName) + ", here's your verification code</h2>" +
+                "<p style=\"color:#475569;font-size:15px;line-height:1.6;margin:0 0 28px\">" +
+                "Use the code below to complete your sign-in. This code is valid for <strong>90 seconds</strong>.</p>" +
+                "<div style=\"text-align:center;margin:32px 0\">" +
+                "<div style=\"display:inline-block;background:#f0fdfa;border:2px solid #0d9488;border-radius:12px;padding:20px 40px\">" +
+                "<span style=\"font-size:36px;font-weight:900;letter-spacing:8px;color:#0d9488;font-family:monospace\">" + code + "</span>" +
+                "</div></div>" +
+                "<p style=\"color:#94a3b8;font-size:13px;line-height:1.5;text-align:center\">" +
+                "If you didn't try to sign in, someone may be trying to access your account. " +
+                "Change your password immediately.</p>" +
+                "<hr style=\"border:none;border-top:1px solid #e2e8f0;margin:28px 0\">" +
+                "<p style=\"color:#94a3b8;font-size:12px;margin:0\">Do not share this code with anyone. BioLabs staff will never ask for your verification code.</p>" +
+                "</td></tr>" +
+                "<tr><td style=\"background:#f8fafc;padding:20px 40px;text-align:center;border-top:1px solid #e2e8f0\">" +
+                "<p style=\"color:#94a3b8;font-size:11px;margin:0\">BioLabs Platform · HIPAA · GDPR · FDA 21 CFR Part 11</p>" +
+                "</td></tr>" +
+                "</table></td></tr></table></body></html>";
     }
 }

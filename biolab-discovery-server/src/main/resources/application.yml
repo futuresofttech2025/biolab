@@ -45,6 +45,15 @@ eureka:
     enable-self-preservation: false
     # Refresh response cache every 5 seconds (default 30s)
     response-cache-update-interval-ms: 5000
+    # FIX: Increase peer-node read timeout to suppress SocketTimeoutException spam.
+    # Default is 200ms which is too short for Docker networking on Windows/Mac.
+    # These timeouts occur because this is a single-node Eureka (no peers to replicate to)
+    # but Eureka still tries to replicate to itself and times out.
+    peer-node-read-timeout-ms: 5000
+    # FIX: Disable peer replication entirely for single-node deployment.
+    # There are no Eureka peers to replicate to — this eliminates the timeout errors.
+    peer-eureka-nodes-update-interval-ms: 600000
+    wait-time-in-ms-when-sync-empty: 0
 
 # ─── Actuator / Management ────────────────────────────────────────────
 management:
@@ -76,6 +85,10 @@ logging:
     com.biolab.discovery: DEBUG
     com.netflix.eureka: WARN
     com.netflix.discovery: WARN
+    # Suppress peer replication timeout noise (single-node deployment has no peers)
+    com.netflix.eureka.cluster.ReplicationTaskProcessor: ERROR
+    com.netflix.eureka.cluster.PeerEurekaNode: ERROR
+    com.netflix.eureka.registry.AbstractInstanceRegistry: WARN
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level [%logger{36}] - %msg%n"
 
